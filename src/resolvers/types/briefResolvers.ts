@@ -68,4 +68,28 @@ export const BriefResolvers = {
     if (tagsError) throw new Error(tagsError.message);
     return tags || [];
   },
+  product: async (parent: Brief) => {
+    if (!parent.product_id) return null;
+    
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', parent.product_id)
+      .single();
+    
+    if (error) throw new Error(error.message);
+    return data;
+  },
+  objective: async (parent: Brief) => {
+    if (!parent.objective_id) return null;
+    
+    const { data, error } = await supabase
+      .from('objectives')
+      .select('*')
+      .eq('id', parent.objective_id)
+      .single();
+    
+    if (error) throw new Error(error.message);
+    return data;
+  },
 }; 

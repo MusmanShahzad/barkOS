@@ -30,11 +30,24 @@ export const typeDefs = `#graphql
     asset: Asset
   }
 
+  enum BriefStatus {
+    Draft
+    Review
+    Approved
+    Live
+  }
+
   type Brief {
     id: Int!
     title: String
     description: String
     created_at: String!
+    go_live_on: String
+    about_target_audience: String
+    about_hook: String
+    status: BriefStatus
+    product: Product
+    objective: Objective
     assets: [Asset]
     comments: [Comment]
     tags: [Tag]
@@ -87,6 +100,22 @@ export const typeDefs = `#graphql
     created_at: String
   }
 
+  type Product {
+    id: Int!
+    name: String
+    description: String
+    created_at: String!
+    briefs: [Brief]
+  }
+
+  type Objective {
+    id: Int!
+    name: String
+    description: String
+    created_at: String!
+    briefs: [Brief]
+  }
+
   # Input types for mutations
   input AssetInput {
     media_id: Int!
@@ -115,6 +144,12 @@ export const typeDefs = `#graphql
   input BriefInput {
     title: String
     description: String
+    go_live_on: String
+    about_target_audience: String
+    about_hook: String
+    product_id: Int
+    objective_id: Int
+    status: BriefStatus
   }
 
   input BriefAssetInput {
@@ -144,6 +179,16 @@ export const typeDefs = `#graphql
   input MediaInput {
     url: String
     type: String
+  }
+
+  input ProductInput {
+    name: String
+    description: String
+  }
+
+  input ObjectiveInput {
+    name: String
+    description: String
   }
 
   type Query {
@@ -193,6 +238,14 @@ export const typeDefs = `#graphql
     # Media queries
     getMedia(id: Int!): Media
     getMedias: [Media]
+    
+    # Product queries
+    getProduct(id: Int!): Product
+    getProducts: [Product]
+    
+    # Objective queries
+    getObjective(id: Int!): Objective
+    getObjectives: [Objective]
   }
 
   type Mutation {
@@ -240,5 +293,15 @@ export const typeDefs = `#graphql
     createMedia(input: MediaInput!): Media
     updateMedia(id: Int!, input: MediaInput!): Media
     deleteMedia(id: Int!): Boolean
+    
+    # Product mutations
+    createProduct(input: ProductInput!): Product
+    updateProduct(id: Int!, input: ProductInput!): Product
+    deleteProduct(id: Int!): Boolean
+    
+    # Objective mutations
+    createObjective(input: ObjectiveInput!): Objective
+    updateObjective(id: Int!, input: ObjectiveInput!): Objective
+    deleteObjective(id: Int!): Boolean
   }
 `; 
