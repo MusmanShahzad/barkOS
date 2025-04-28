@@ -1,1791 +1,756 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useEffect, useState, FormEvent, useCallback } from "react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { FileIcon, Upload } from "lucide-react"
-import { mockBriefs, mockUsers } from "@/lib/mock-data"
-import { formatFileSize, formatDate } from "@/lib/utils"
-import Image from "next/image"
-import EnhancedCommentSection from "@/components/enhanced-comment-section"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Separator } from "@/components/ui/separator"
-import { TokenizedSelect } from "@/components/tokenized-select"
-import { Badge } from "@/components/ui/badge"
-import { X } from "lucide-react"
+import { Button } from "./ui/button"
+import { Label } from "./ui/label"
+import { Input } from "./ui/input"
+import { Textarea } from "./ui/textarea"
+import { MediaUpload } from "./media-upload"
+import { toast } from "sonner"
+import { 
+  useCreateAssetMutation, 
+  useUpdateAssetMutation, 
+  useGetTagsQuery,
+  Asset as GraphQLAsset,
+  Tag,
+  Maybe
+} from "../src/graphql/generated/graphql"
+import { Badge } from "./ui/badge"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "./ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover"
+import { Check, ChevronsUpDown, Loader2, AlertCircle, FileIcon, Trash2, Save } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Progress } from "./ui/progress"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import { BriefTokenizeInput } from "./brief-tokenize-input"
+import React from "react"
 
-// Helper function for status color in badges
-function getStatusColorForBadge(status) {
-  switch (status?.toLowerCase()) {
-    case "draft":
-      return "#FEF3C7" // Light yellow
-    case "review":
-      return "#DBEAFE" // Light blue
-    case "approved":
-      return "#D1FAE5" // Light green
-    default:
-      return "#F3F4F6" // Light gray
-  }
+// Debounce utility function
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: NodeJS.Timeout;
+  
+  return function(...args: Parameters<T>) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, delay);
+  };
 }
 
-export default function AssetModal({ isOpen, onClose, onSave, asset = null }) {
-  const [formData, setFormData] = useState({
-    id: asset?.id || "",
-    name: asset?.name || "",
-    description: asset?.description || "",
-    type: asset?.type || "image",
-    size: asset?.size || 0,
-    url: asset?.url || "",
-    tags: asset?.tags || [],
-    createdBy: asset?.createdBy || mockUsers[0],
-    createdAt: asset?.createdAt || new Date(),
-    comments: asset?.comments || [],
-    relatedBriefs: asset?.relatedBriefs || [],
-  })
+export interface IAsset extends Omit<GraphQLAsset, '__typename' | 'comments' | 'tags' | 'briefs'> {
+  url: string;
+  fileType: string;
+  tags?: { id: number; name: string }[];
+  updated_at?: string;
+  relatedBriefs?: { id: number; title: string }[];
+}
 
-  const [tagInput, setTagInput] = useState("")
-  const [tagPopoverOpen, setTagPopoverOpen] = useState(false)
-  const [dragActive, setDragActive] = useState(false)
-  const [previewFile, setPreviewFile] = useState(null)
-  const inputRef = useRef(null)
+export interface AssetModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSave: (asset: IAsset) => Promise<void>
+  asset: IAsset | null
+}
 
-  // All possible tags from all assets for autocomplete
-  const allPossibleTags = [
-    "design",
-    "marketing",
-    "social",
-    "website",
-    "campaign",
-    "product",
-    "brand",
-    "video",
-    "photo",
-    "document",
-    "presentation",
-    "holiday",
-    "summer",
-    "winter",
-    "spring",
-    "fall",
-    "promotion",
-    "sale",
-    "launch",
-    "event",
-    "mobile",
-    "desktop",
-    "print",
-    "digital",
-    "banner",
-    "logo",
-    "icon",
-    "illustration",
-    "typography",
-    "color",
-    "layout",
-    "wireframe",
-    "mockup",
-    "prototype",
-    "ui",
-    "ux",
-    "research",
-    "testing",
-    "analytics",
-    "data",
-    "report",
-    "strategy",
-    "planning",
-    "execution",
-    "review",
-    "feedback",
-    "revision",
-    "final",
-    "draft",
-    "concept",
-    "idea",
-    "inspiration",
-    "reference",
-    "example",
-    "template",
-    "guide",
-    "tutorial",
-    "documentation",
-    "specification",
-    "requirement",
-    "feature",
-    "function",
-    "component",
-    "module",
-    "system",
-    "platform",
-    "integration",
-    "api",
-    "database",
-    "server",
-    "client",
-    "frontend",
-    "backend",
-    "fullstack",
-    "development",
-    "production",
-    "staging",
-    "testing",
-    "qa",
-    "release",
-    "version",
-    "update",
-    "patch",
-    "fix",
-    "bug",
-    "issue",
-    "ticket",
-    "task",
-    "story",
-    "epic",
-    "sprint",
-    "milestone",
-    "roadmap",
-    "timeline",
-    "schedule",
-    "deadline",
-    "priority",
-    "severity",
-    "impact",
-    "scope",
-    "budget",
-    "cost",
-    "resource",
-    "team",
-    "stakeholder",
-    "customer",
-    "user",
-    "audience",
-    "target",
-    "demographic",
-    "segment",
-    "persona",
-    "journey",
-    "experience",
-    "interaction",
-    "engagement",
-    "conversion",
-    "retention",
-    "acquisition",
-    "growth",
-    "scale",
-    "performance",
-    "optimization",
-    "efficiency",
-    "effectiveness",
-    "quality",
-    "quantity",
-    "measurement",
-    "metric",
-    "kpi",
-    "goal",
-    "objective",
-    "vision",
-    "mission",
-    "value",
-    "principle",
-    "policy",
-    "procedure",
-    "process",
-    "workflow",
-    "pipeline",
-    "funnel",
-    "channel",
-    "medium",
-    "platform",
-    "network",
-    "community",
-    "ecosystem",
-    "environment",
-    "context",
-    "situation",
-    "scenario",
-    "case",
-    "example",
-    "instance",
-    "occurrence",
-    "event",
-    "action",
-    "activity",
-    "behavior",
-    "attitude",
-    "perception",
-    "cognition",
-    "emotion",
-    "feeling",
-    "sentiment",
-    "opinion",
-    "feedback",
-    "input",
-    "output",
-    "outcome",
-    "result",
-    "impact",
-    "effect",
-    "consequence",
-    "implication",
-    "significance",
-    "importance",
-    "relevance",
-    "priority",
-    "urgency",
-    "criticality",
-    "severity",
-    "complexity",
-    "simplicity",
-    "clarity",
-    "ambiguity",
-    "uncertainty",
-    "risk",
-    "opportunity",
-    "challenge",
-    "problem",
-    "solution",
-    "resolution",
-    "decision",
-    "choice",
-    "option",
-    "alternative",
-    "approach",
-    "method",
-    "technique",
-    "tool",
-    "technology",
-    "innovation",
-    "creativity",
-    "originality",
-    "uniqueness",
-    "differentiation",
-    "competition",
-    "advantage",
-    "benefit",
-    "feature",
-    "attribute",
-    "characteristic",
-    "property",
-    "quality",
-    "quantity",
-    "dimension",
-    "size",
-    "scale",
-    "scope",
-    "range",
-    "extent",
-    "limit",
-    "boundary",
-    "constraint",
-    "restriction",
-    "requirement",
-    "specification",
-    "standard",
-    "guideline",
-    "rule",
-    "regulation",
-    "policy",
-    "procedure",
-    "protocol",
-    "convention",
-    "norm",
-    "practice",
-    "habit",
-    "routine",
-    "ritual",
-    "tradition",
-    "culture",
-    "value",
-    "belief",
-    "attitude",
-    "mindset",
-    "perspective",
-    "viewpoint",
-    "standpoint",
-    "position",
-    "stance",
-    "approach",
-    "orientation",
-    "direction",
-    "trend",
-    "pattern",
-    "theme",
-    "motif",
-    "concept",
-    "idea",
-    "notion",
-    "thought",
-    "theory",
-    "hypothesis",
-    "assumption",
-    "premise",
-    "proposition",
-    "argument",
-    "reasoning",
-    "logic",
-    "rationale",
-    "justification",
-    "explanation",
-    "interpretation",
-    "understanding",
-    "comprehension",
-    "knowledge",
-    "wisdom",
-    "insight",
-    "foresight",
-    "hindsight",
-    "reflection",
-    "introspection",
-    "awareness",
-    "consciousness",
-    "mindfulness",
-    "attention",
-    "focus",
-    "concentration",
-    "distraction",
-    "interruption",
-    "disruption",
-    "interference",
-    "noise",
-    "signal",
-    "message",
-    "communication",
-    "conversation",
-    "dialogue",
-    "discussion",
-    "debate",
-    "negotiation",
-    "mediation",
-    "facilitation",
-    "coordination",
-    "collaboration",
-    "cooperation",
-    "competition",
-    "conflict",
-    "tension",
-    "friction",
-    "harmony",
-    "balance",
-    "equilibrium",
-    "stability",
-    "instability",
-    "volatility",
-    "variability",
-    "consistency",
-    "inconsistency",
-    "coherence",
-    "incoherence",
-    "continuity",
-    "discontinuity",
-    "change",
-    "transformation",
-    "evolution",
-    "revolution",
-    "disruption",
-    "innovation",
-    "improvement",
-    "enhancement",
-    "optimization",
-    "refinement",
-    "iteration",
-    "increment",
-    "decrement",
-    "increase",
-    "decrease",
-    "growth",
-    "decline",
-    "expansion",
-    "contraction",
-    "inflation",
-    "deflation",
-    "recession",
-    "depression",
-    "recovery",
-    "boom",
-    "bust",
-    "cycle",
-    "phase",
-    "stage",
-    "step",
-    "level",
-    "tier",
-    "layer",
-    "hierarchy",
-    "structure",
-    "organization",
-    "system",
-    "framework",
-    "architecture",
-    "design",
-    "layout",
-    "composition",
-    "arrangement",
-    "configuration",
-    "formation",
-    "construction",
-    "building",
-    "development",
-    "creation",
-    "generation",
-    "production",
-    "manufacturing",
-    "fabrication",
-    "assembly",
-    "integration",
-    "implementation",
-    "deployment",
-    "installation",
-    "setup",
-    "configuration",
-    "customization",
-    "personalization",
-    "adaptation",
-    "adjustment",
-    "modification",
-    "alteration",
-    "change",
-    "transformation",
-    "conversion",
-    "transition",
-    "shift",
-    "movement",
-    "motion",
-    "action",
-    "activity",
-    "operation",
-    "function",
-    "process",
-    "procedure",
-    "method",
-    "technique",
-    "approach",
-    "strategy",
-    "tactic",
-    "maneuver",
-    "move",
-    "play",
-    "gambit",
-    "trick",
-    "hack",
-    "workaround",
-    "solution",
-    "fix",
-    "patch",
-    "update",
-    "upgrade",
-    "downgrade",
-    "rollback",
-    "reversion",
-    "restoration",
-    "recovery",
-    "backup",
-    "archive",
-    "storage",
-    "repository",
-    "database",
-    "warehouse",
-    "library",
-    "collection",
-    "set",
-    "group",
-    "cluster",
-    "category",
-    "classification",
-    "taxonomy",
-    "ontology",
-    "hierarchy",
-    "tree",
-    "graph",
-    "network",
-    "mesh",
-    "grid",
-    "matrix",
-    "array",
-    "vector",
-    "list",
-    "queue",
-    "stack",
-    "heap",
-    "buffer",
-    "cache",
-    "memory",
-    "storage",
-    "disk",
-    "drive",
-    "device",
-    "hardware",
-    "software",
-    "firmware",
-    "middleware",
-    "application",
-    "program",
-    "script",
-    "code",
-    "algorithm",
-    "function",
-    "method",
-    "procedure",
-    "routine",
-    "subroutine",
-    "module",
-    "package",
-    "library",
-    "framework",
-    "platform",
-    "environment",
-    "ecosystem",
-    "infrastructure",
-    "architecture",
-    "design",
-    "pattern",
-    "model",
-    "template",
-    "prototype",
-    "instance",
-    "object",
-    "class",
-    "interface",
-    "abstract",
-    "concrete",
-    "implementation",
-    "specification",
-    "contract",
-    "agreement",
-    "understanding",
-    "arrangement",
-    "deal",
-    "transaction",
-    "exchange",
-    "transfer",
-    "transmission",
-    "communication",
-    "message",
-    "signal",
-    "noise",
-    "data",
-    "information",
-    "knowledge",
-    "wisdom",
-    "intelligence",
-    "learning",
-    "education",
-    "training",
-    "development",
-    "growth",
-    "maturity",
-    "experience",
-    "expertise",
-    "skill",
-    "ability",
-    "capability",
-    "capacity",
-    "competence",
-    "proficiency",
-    "mastery",
-    "virtuosity",
-    "excellence",
-    "perfection",
-    "flawlessness",
-    "impeccability",
-    "precision",
-    "accuracy",
-    "correctness",
-    "rightness",
-    "validity",
-    "soundness",
-    "robustness",
-    "resilience",
-    "durability",
-    "longevity",
-    "permanence",
-    "temporariness",
-    "transience",
-    "ephemerality",
-    "volatility",
-    "stability",
-    "steadiness",
-    "consistency",
-    "reliability",
-    "dependability",
-    "trustworthiness",
-    "credibility",
-    "integrity",
-    "honesty",
-    "truthfulness",
-    "authenticity",
-    "genuineness",
-    "realness",
-    "reality",
-    "actuality",
-    "factuality",
-    "objectivity",
-    "subjectivity",
-    "bias",
-    "prejudice",
-    "discrimination",
-    "fairness",
-    "justice",
-    "equity",
-    "equality",
-    "inequality",
-    "disparity",
-    "difference",
-    "similarity",
-    "sameness",
-    "identity",
-    "uniqueness",
-    "distinctiveness",
-    "differentiation",
-    "specialization",
-    "generalization",
-    "abstraction",
-    "concreteness",
-    "specificity",
-    "detail",
-    "granularity",
-    "resolution",
-    "fidelity",
-    "quality",
-    "grade",
-    "class",
-    "tier",
-    "level",
-    "rank",
-    "status",
-    "position",
-    "role",
-    "function",
-    "purpose",
-    "goal",
-    "objective",
-    "aim",
-    "target",
-    "destination",
-    "end",
-    "finish",
-    "completion",
-    "conclusion",
-    "termination",
-    "cessation",
-    "stop",
-    "halt",
-    "pause",
-    "break",
-    "interruption",
-    "disruption",
-    "disturbance",
-    "interference",
-    "intervention",
-    "mediation",
-    "facilitation",
-    "assistance",
-    "help",
-    "support",
-    "aid",
-    "service",
-    "utility",
-    "usefulness",
-    "value",
-    "worth",
-    "merit",
-    "desert",
-    "credit",
-    "recognition",
-    "acknowledgment",
-    "appreciation",
-    "gratitude",
-    "thankfulness",
-    "gratefulness",
-    "indebtedness",
-    "obligation",
-    "duty",
-    "responsibility",
-    "accountability",
-    "liability",
-    "culpability",
-    "blame",
-    "fault",
-    "guilt",
-    "innocence",
-    "blamelessness",
-    "faultlessness",
-    "guiltlessness",
-    "purity",
-    "cleanliness",
-    "hygiene",
-    "sanitation",
-    "health",
-    "wellness",
-    "fitness",
-    "vitality",
-    "vigor",
-    "energy",
-    "power",
-    "strength",
-    "force",
-    "might",
-    "potency",
-    "effectiveness",
-    "efficacy",
-    "efficiency",
-    "productivity",
-    "output",
-    "yield",
-    "return",
-    "profit",
-    "gain",
-    "benefit",
-    "advantage",
-    "edge",
-    "lead",
-    "superiority",
-    "dominance",
-    "supremacy",
-    "hegemony",
-    "authority",
-    "control",
-    "command",
-    "mastery",
-    "leadership",
-    "guidance",
-    "direction",
-    "management",
-    "administration",
-    "governance",
-    "government",
-    "state",
-    "nation",
-    "country",
-    "land",
-    "territory",
-    "region",
-    "area",
-    "zone",
-    "sector",
-    "district",
-    "neighborhood",
-    "community",
-    "society",
-    "culture",
-    "civilization",
-    "humanity",
-    "mankind",
-    "humankind",
-    "people",
-    "population",
-    "demographic",
-    "audience",
-    "market",
-    "segment",
-    "niche",
-    "target",
-    "customer",
-    "client",
-    "user",
-    "consumer",
-    "buyer",
-    "seller",
-    "vendor",
-    "supplier",
-    "provider",
-    "producer",
-    "manufacturer",
-    "creator",
-    "author",
-    "artist",
-    "designer",
-    "developer",
-    "engineer",
-    "architect",
-    "builder",
-    "constructor",
-    "maker",
-    "craftsman",
-    "artisan",
-    "technician",
-    "specialist",
-    "expert",
-    "professional",
-    "amateur",
-    "hobbyist",
-    "enthusiast",
-    "fan",
-    "follower",
-    "supporter",
-    "advocate",
-    "promoter",
-    "ambassador",
-    "representative",
-    "delegate",
-    "agent",
-    "broker",
-    "intermediary",
-    "mediator",
-    "negotiator",
-    "arbitrator",
-    "judge",
-    "referee",
-    "umpire",
-    "critic",
-    "reviewer",
-    "evaluator",
-    "assessor",
-    "appraiser",
-    "estimator",
-    "calculator",
-    "computer",
-    "processor",
-    "server",
-    "client",
-    "host",
-    "guest",
-    "visitor",
-    "stranger",
-    "acquaintance",
-    "friend",
-    "ally",
-    "partner",
-    "associate",
-    "colleague",
-    "coworker",
-    "teammate",
-    "collaborator",
-    "competitor",
-    "rival",
-    "opponent",
-    "adversary",
-    "enemy",
-    "foe",
-    "antagonist",
-    "protagonist",
-    "hero",
-    "villain",
-    "character",
-    "persona",
-    "identity",
-    "self",
-    "individual",
-    "person",
-    "human",
-    "being",
-    "creature",
-    "organism",
-    "life",
-    "existence",
-    "reality",
-    "world",
-    "universe",
-    "cosmos",
-    "nature",
-    "environment",
-    "ecology",
-    "ecosystem",
-    "biosphere",
-    "atmosphere",
-    "climate",
-    "weather",
-    "temperature",
-    "pressure",
-    "humidity",
-    "precipitation",
-    "rain",
-    "snow",
-    "sleet",
-    "hail",
-    "fog",
-    "mist",
-    "cloud",
-    "sky",
-    "heaven",
-    "paradise",
-    "utopia",
-    "dystopia",
-    "hell",
-    "purgatory",
-    "limbo",
-    "void",
-    "abyss",
-    "chasm",
-    "gap",
-    "space",
-    "interval",
-    "distance",
-    "proximity",
-    "closeness",
-    "nearness",
-    "farness",
-    "remoteness",
-    "isolation",
-    "separation",
-    "connection",
-    "link",
-    "relationship",
-    "association",
-    "correlation",
-    "causation",
-    "cause",
-    "effect",
-    "consequence",
-    "result",
-    "outcome",
-    "output",
-    "product",
-    "service",
-    "good",
-    "commodity",
-    "merchandise",
-    "ware",
-    "stock",
-    "inventory",
-    "supply",
-    "demand",
-    "market",
-    "economy",
-    "industry",
-    "sector",
-    "business",
-    "commerce",
-    "trade",
-    "exchange",
-    "transaction",
-    "deal",
-    "bargain",
-    "sale",
-    "purchase",
-    "acquisition",
-    "procurement",
-    "sourcing",
-    "outsourcing",
-    "insourcing",
-    "offshoring",
-    "nearshoring",
-    "reshoring",
-    "onshoring",
-    "globalization",
-    "localization",
-    "internationalization",
-    "nationalization",
-    "privatization",
-    "deregulation",
-    "liberalization",
-    "protectionism",
-    "isolationism",
-    "interventionism",
-    "capitalism",
-    "socialism",
-    "communism",
-    "fascism",
-    "democracy",
-    "republic",
-    "monarchy",
-    "aristocracy",
-    "oligarchy",
-    "plutocracy",
-    "technocracy",
-    "meritocracy",
-    "bureaucracy",
-    "autocracy",
-    "dictatorship",
-    "totalitarianism",
-    "authoritarianism",
-    "libertarianism",
-    "conservatism",
-    "liberalism",
-    "progressivism",
-    "radicalism",
-    "extremism",
-    "centrism",
-    "moderatism",
-    "pragmatism",
-    "idealism",
-    "realism",
-    "materialism",
-    "spiritualism",
-    "religion",
-    "faith",
-    "belief",
-    "creed",
-    "doctrine",
-    "dogma",
-    "ideology",
-    "philosophy",
-    "ethics",
-    "morality",
-    "virtue",
-    "vice",
-    "sin",
-    "crime",
-    "offense",
-    "violation",
-    "transgression",
-    "infraction",
-    "breach",
-    "infringement",
-    "trespass",
-    "intrusion",
-    "invasion",
-    "incursion",
-    "raid",
-    "attack",
-    "assault",
-    "strike",
-    "hit",
-    "blow",
-    "punch",
-    "kick",
-    "slap",
-    "smack",
-    "whack",
-    "bash",
-    "slam",
-    "crash",
-    "collision",
-    "impact",
-    "force",
-    "pressure",
-    "stress",
-    "strain",
-    "tension",
-    "compression",
-    "torsion",
-    "bending",
-    "flexing",
-    "stretching",
-    "shrinking",
-    "expanding",
-    "growing",
-    "diminishing",
-    "increasing",
-    "decreasing",
-    "rising",
-    "falling",
-    "climbing",
-    "descending",
-    "ascending",
-    "mounting",
-    "scaling",
-    "soaring",
-    "plummeting",
-    "diving",
-    "plunging",
-    "sinking",
-    "drowning",
-    "floating",
-    "swimming",
-    "flying",
-    "gliding",
-    "sailing",
-    "cruising",
-    "traveling",
-    "journeying",
-    "voyaging",
-    "exploring",
-    "discovering",
-    "finding",
-    "locating",
-    "identifying",
-    "recognizing",
-    "knowing",
-    "understanding",
-    "comprehending",
-    "grasping",
-    "learning",
-    "studying",
-    "researching",
-    "investigating",
-    "examining",
-    "analyzing",
-    "dissecting",
-    "breaking",
-    "fixing",
-    "repairing",
-    "mending",
-    "healing",
-    "curing",
-    "treating",
-    "diagnosing",
-    "prescribing",
-    "medicating",
-    "drugging",
-    "poisoning",
-    "killing",
-    "murdering",
-    "assassinating",
-    "executing",
-    "slaughtering",
-    "massacring",
-    "genociding",
-    "exterminating",
-    "annihilating",
-    "destroying",
-    "demolishing",
-    "razing",
-    "leveling",
-    "flattening",
-    "crushing",
-    "smashing",
-    "breaking",
-    "shattering",
-    "splintering",
-    "fragmenting",
-    "disintegrating",
-    "dissolving",
-    "melting",
-    "freezing",
-    "solidifying",
-    "hardening",
-    "softening",
-    "weakening",
-    "strengthening",
-    "reinforcing",
-    "fortifying",
-    "defending",
-    "protecting",
-    "guarding",
-    "securing",
-    "safeguarding",
-    "preserving",
-    "conserving",
-    "saving",
-    "rescuing",
-    "liberating",
-    "freeing",
-    "releasing",
-    "discharging",
-    "emitting",
-    "radiating",
-    "shining",
-    "glowing",
-    "burning",
-    "combusting",
-    "oxidizing",
-    "reducing",
-    "catalyzing",
-    "accelerating",
-    "decelerating",
-    "slowing",
-    "stopping",
-    "halting",
-    "ceasing",
-    "ending",
-    "finishing",
-    "completing",
-    "concluding",
-    "terminating",
-    "closing",
-    "opening",
-    "beginning",
-    "starting",
-    "initiating",
-    "launching",
-    "inaugurating",
-    "commencing",
-    "embarking",
-    "undertaking",
-    "attempting",
-    "trying",
-    "testing",
-    "experimenting",
-    "piloting",
-    "prototyping",
-    "modeling",
-    "simulating",
-    "emulating",
-    "imitating",
-    "copying",
-    "duplicating",
-    "replicating",
-    "cloning",
-    "reproducing",
-    "breeding",
-    "multiplying",
-    "dividing",
-    "adding",
-    "subtracting",
-    "multiplying",
-    "dividing",
-    "calculating",
-    "computing",
-    "processing",
-    "analyzing",
-    "synthesizing",
-    "creating",
-    "inventing",
-    "innovating",
-    "pioneering",
-    "trailblazing",
-    "groundbreaking",
-    "revolutionary",
-    "evolutionary",
-    "transformative",
-    "disruptive",
-    "game-changing",
-    "paradigm-shifting",
-    "mind-blowing",
-    "awe-inspiring",
-    "breathtaking",
-    "stunning",
-    "amazing",
-    "astonishing",
-    "astounding",
-    "surprising",
-    "shocking",
-    "startling",
-    "alarming",
-    "frightening",
-    "terrifying",
-    "horrifying",
-    "petrifying",
-    "paralyzing",
-    "immobilizing",
-    "freezing",
-    "chilling",
-    "cooling",
-    "warming",
-    "heating",
-    "boiling",
-    "evaporating",
-    "condensing",
-    "precipitating",
-    "raining",
-    "snowing",
-    "hailing",
-    "sleeting",
-    "storming",
-    "thundering",
-    "lightning",
-    "flashing",
-    "sparking",
-    "igniting",
-    "kindling",
-    "fueling",
-    "powering",
-    "energizing",
-    "activating",
-    "stimulating",
-    "exciting",
-    "thrilling",
-    "exhilarating",
-    "invigorating",
-    "refreshing",
-    "rejuvenating",
-    "revitalizing",
-    "restoring",
-    "rehabilitating",
-    "recovering",
-    "healing",
-    "mending",
-    "fixing",
-    "repairing",
-    "maintaining",
-    "servicing",
-    "overhauling",
-    "rebuilding",
-    "reconstructing",
-    "renovating",
-    "remodeling",
-    "refurbishing",
-    "refining",
-    "polishing",
-    "smoothing",
-    "roughening",
-    "texturing",
-    "patterning",
-    "designing",
-    "styling",
-    "fashioning",
-    "trending",
-    "popularizing",
-    "mainstreaming",
-    "normalizing",
-    "standardizing",
-    "regulating",
-    "controlling",
-    "managing",
-    "administering",
-    "governing",
-    "ruling",
-    "reigning",
-    "presiding",
-    "leading",
-    "guiding",
-    "directing",
-    "steering",
-    "navigating",
-    "piloting",
-    "driving",
-    "riding",
-    "walking",
-    "running",
-    "jogging",
-    "sprinting",
-    "racing",
-    "competing",
-    "contesting",
-    "challenging",
-    "testing",
-    "trying",
-    "attempting",
-    "succeeding",
-    "failing",
-    "winning",
-    "losing",
-    "drawing",
-    "tying",
-    "equalizing",
-    "balancing",
-    "harmonizing",
-    "synchronizing",
-    "coordinating",
-    "organizing",
-    "arranging",
-    "ordering",
-    "sorting",
-    "classifying",
-    "categorizing",
-    "grouping",
-    "clustering",
-    "gathering",
-    "collecting",
-    "accumulating",
-    "amassing",
-    "hoarding",
-    "storing",
-    "saving",
-    "investing",
-    "spending",
-    "consuming",
-    "using",
-    "utilizing",
-    "employing",
-    "applying",
-    "implementing",
-    "executing",
-    "performing",
-    "doing",
-    "acting",
-    "behaving",
-    "conducting",
-    "carrying",
-    "bearing",
-    "holding",
-    "containing",
-    "including",
-    "excluding",
-    "omitting",
-    "skipping",
-    "missing",
-    "lacking",
-    "needing",
-    "wanting",
-    "desiring",
-    "craving",
-    "yearning",
-    "longing",
-    "pining",
-    "aching",
-    "hurting",
-    "paining",
-    "suffering",
-    "agonizing",
-    "torturing",
-    "tormenting",
-    "persecuting",
-    "oppressing",
-    "suppressing",
-    "repressing",
-    "inhibiting",
-    "restraining",
-    "constraining",
-    "limiting",
-    "restricting",
-    "confining",
-    "imprisoning",
-    "incarcerating",
-    "detaining",
-    "arresting",
-    "capturing",
-    "seizing",
-    "taking",
-    "grabbing",
-    "clutching",
-    "grasping",
-    "gripping",
-    "holding",
-    "releasing",
-    "freeing",
-    "liberating",
-    "emancipating",
-    "delivering",
-    "saving",
-    "rescuing",
-    "helping",
-    "assisting",
-    "aiding",
-    "supporting",
+// Form schema for validation
+const assetFormSchema = z.object({
+  title: z.string()
+    .min(1, "Title is required")
+    .max(100, "Title must be less than 100 characters"),
+  description: z.string()
+    .min(1, "Description is required")
+    .max(500, "Description must be less than 500 characters"),
+  mediaId: z.number().optional(),
+  thumbnailMediaId: z.number().optional(),
+  selectedTags: z.array(z.number())
+    .min(1, "Please select at least one tag"),
+  selectedBriefs: z.array(z.string()).optional(),
+  fileType: z.string().optional(),
+  url: z.string().optional(),
+});
 
-    '  "optimistic',
-    "hopeful",
-    "confident",
-    "assured",
-    "certain",
-    "sure",
-    "positive",
-    "definite",
-    "absolute",
-  ]
+type AssetFormValues = z.infer<typeof assetFormSchema>;
 
-  // Reset form data when asset changes
+export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) {
+  // UI state
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const [mediaRemoved, setMediaRemoved] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Mutations and queries
+  const [createAsset] = useCreateAssetMutation();
+  const [updateAsset] = useUpdateAssetMutation();
+  const { data: tagsData } = useGetTagsQuery();
+
+  // Form ref for manual submission
+  const formRef = React.useRef<HTMLFormElement>(null);
+
+  // Form with react-hook-form
+  const { 
+    control, 
+    handleSubmit, 
+    formState: { errors, isSubmitting, isDirty }, 
+    reset,
+    setValue,
+    watch,
+    clearErrors,
+    getValues
+  } = useForm<AssetFormValues>({
+    resolver: zodResolver(assetFormSchema),
+    defaultValues: {
+      title: asset?.name || '',
+      description: asset?.description || '',
+      mediaId: asset?.media_id ? Number(asset.media_id) : undefined,
+      thumbnailMediaId: asset?.thumbnail_media_id ? Number(asset.thumbnail_media_id) : undefined,
+      selectedTags: asset?.tags?.map(tag => tag.id) || [],
+      selectedBriefs: asset?.relatedBriefs?.map(brief => String(brief.id)) || [],
+      fileType: asset?.fileType || '',
+      url: asset?.url || '',
+    }
+  });
+
+  // Auto-save handler (debounced)
+  const autoSaveAsset = useCallback(
+    debounce(async () => {
+      if (!asset?.id || !isDirty || isUploading) return;
+      
+      try {
+        setAutoSaveStatus('saving');
+        const data = getValues();
+        
+        const input = {
+          media_id: data.mediaId as number,
+          name: data.title.trim(),
+          description: data.description.trim(),
+          tagIds: data.selectedTags,
+          thumbnail_media_id: data.thumbnailMediaId,
+          relatedBriefIds: data.selectedBriefs ? data.selectedBriefs.map(id => parseInt(id)) : []
+        };
+
+        await updateAsset({
+          variables: {
+            id: asset.id,
+            input
+          }
+        });
+
+        setAutoSaveStatus('saved');
+        
+        // Reset to idle after a delay
+        setTimeout(() => {
+          setAutoSaveStatus('idle');
+        }, 2000);
+      } catch (error: any) {
+        console.error("Auto-save error:", error);
+        setAutoSaveStatus('error');
+        
+        // Reset to idle after a delay
+        setTimeout(() => {
+          setAutoSaveStatus('idle');
+        }, 3000);
+      }
+    }, 1500),
+    [asset?.id, isDirty, isUploading, updateAsset, getValues]
+  );
+
+  // Watch for changes and trigger auto-save
+  useEffect(() => {
+    if (asset?.id && isDirty && !isUploading) {
+      autoSaveAsset();
+    }
+  }, [
+    watch('title'),
+    watch('description'),
+    watch('selectedTags'),
+    watch('selectedBriefs'),
+    watch('mediaId'),
+    watch('thumbnailMediaId'),
+    watch('fileType'),
+    watch('url'),
+    asset?.id,
+    isDirty,
+    isUploading,
+    autoSaveAsset
+  ]);
+
+  // Reset form when asset changes
   useEffect(() => {
     if (isOpen) {
-      setFormData({
-        id: asset?.id || "",
-        name: asset?.name || "",
-        description: asset?.description || "",
-        type: asset?.type || "image",
-        size: asset?.size || 0,
-        url: asset?.url || "",
-        tags: asset?.tags || [],
-        createdBy: asset?.createdBy || mockUsers[0],
-        createdAt: asset?.createdAt || new Date(),
-        comments: asset?.comments || [],
-        relatedBriefs: asset?.relatedBriefs || [],
-      })
-
-      setPreviewFile(null)
+      reset({
+        title: asset?.name || '',
+        description: asset?.description || '',
+        mediaId: asset?.media_id ? Number(asset.media_id) : undefined,
+        thumbnailMediaId: asset?.thumbnail_media_id ? Number(asset.thumbnail_media_id) : undefined,
+        selectedTags: asset?.tags?.map(tag => tag.id) || [],
+        selectedBriefs: asset?.relatedBriefs?.map(brief => String(brief.id)) || [],
+        fileType: asset?.fileType || '',
+        url: asset?.url || '',
+      });
+      setMediaRemoved(false);
+      setAutoSaveStatus('idle');
     }
-  }, [asset, isOpen])
+  }, [asset, isOpen, reset]);
 
-  const handleChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
-  }
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-
-    // If we have a preview file, use that URL
-    const finalFormData = { ...formData }
-    if (previewFile) {
-      finalFormData.url = previewFile.url
-      finalFormData.type = previewFile.type
-      finalFormData.size = previewFile.size
+  const handleClose = () => {
+    reset({
+      title: '',
+      description: '',
+      mediaId: undefined,
+      thumbnailMediaId: undefined,
+      selectedTags: [],
+      selectedBriefs: [],
+      fileType: '',
+      url: '',
+    }, { 
+      keepDefaultValues: false, 
+    });
+    
+    // Force clear all errors
+    clearErrors();
+    
+    // Reset state variables
+    setMediaRemoved(false);
+    setAutoSaveStatus('idle');
+    setIsUploading(false);
+    setUploadProgress(0);
+    setTagPopoverOpen(false);
+    
+    // Reset the form element directly
+    if (formRef.current) {
+      console.log('resetting 2')
+      formRef.current.reset();
     }
+    
+    onClose();
+  };
 
-    onSave(finalFormData)
-  }
+  // Remove media handler
+  const handleRemoveMedia = () => {
+    setValue('mediaId', undefined, { shouldDirty: true });
+    setValue('url', '', { shouldDirty: true });
+    setValue('fileType', '', { shouldDirty: true });
+    setValue('thumbnailMediaId', undefined, { shouldDirty: true });
+    setMediaRemoved(true);
+  };
 
-  const handleAddTag = () => {
-    if (tagInput.trim() && !formData.tags.includes(tagInput.trim())) {
-      setFormData((prev) => ({
-        ...prev,
-        tags: [...prev.tags, tagInput.trim()],
-      }))
-      setTagInput("")
-    }
-  }
+  // Handle brief selection changes
+  const handleBriefChange = (selectedBriefs: string[]) => {
+    setValue('selectedBriefs', selectedBriefs, { shouldDirty: true, shouldValidate: true });
+  };
 
-  const handleRemoveTag = (tagToRemove) => {
-    setFormData((prev) => ({
-      ...prev,
-      tags: prev.tags.filter((tag) => tag !== tagToRemove),
-    }))
-  }
+  // Function to trigger form submission from outside the form
+  const submitForm = () => {
+    formRef.current?.dispatchEvent(
+      new Event('submit', { cancelable: true, bubbles: true })
+    );
+  };
 
-  const handleAddComment = (comment, mentionedUsers = []) => {
-    const newComment = {
-      id: Date.now().toString(),
-      text: comment,
-      user: mockUsers[0], // Current user
-      createdAt: new Date(),
-      mentions: mentionedUsers,
-    }
+  // Form submission
+  const onSubmitForm = async (data: AssetFormValues) => {
+    try {
+      if (!data.mediaId && !asset && !mediaRemoved) {
+        toast.error('Please upload a file');
+        return;
+      }
 
-    setFormData((prev) => ({
-      ...prev,
-      comments: [...prev.comments, newComment],
-    }))
-  }
+      setAutoSaveStatus('saving');
 
-  const handleDrag = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
+      const input = {
+        media_id: data.mediaId as number,
+        name: data.title.trim(),
+        description: data.description.trim(),
+        tagIds: data.selectedTags,
+        thumbnail_media_id: data.thumbnailMediaId,
+        relatedBriefIds: data.selectedBriefs ? data.selectedBriefs.map(id => parseInt(id)) : []
+      };
 
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true)
-    } else if (e.type === "dragleave") {
-      setDragActive(false)
-    }
-  }
-
-  const handleDrop = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0])
-    }
-  }
-
-  const handleFileChange = (e) => {
-    e.preventDefault()
-
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0])
-    }
-  }
-
-  const handleFile = (file) => {
-    // Create a URL for the file
-    const fileUrl = URL.createObjectURL(file)
-
-    // Determine file type
-    const fileType = file.type.split("/")[0]
-
-    // Update form data
-    setFormData((prev) => ({
-      ...prev,
-      name: file.name,
-    }))
-
-    // Set preview file
-    setPreviewFile({
-      name: file.name,
-      type: fileType,
-      size: file.size,
-      url: fileUrl,
-      file: file,
-    })
-  }
-
-  const toggleBriefRelation = (briefId) => {
-    setFormData((prev) => {
-      const isRelated = prev.relatedBriefs.includes(briefId)
-
-      if (isRelated) {
-        return {
-          ...prev,
-          relatedBriefs: prev.relatedBriefs.filter((id) => id !== briefId),
-        }
+      if (asset?.id) {
+        await updateAsset({
+          variables: {
+            id: asset.id,
+            input
+          }
+        });
       } else {
-        return {
-          ...prev,
-          relatedBriefs: [...prev.relatedBriefs, briefId],
+        await createAsset({
+          variables: {
+            input
+          }
+        });
+      }
+
+      // Create a complete asset object to pass to onSave
+      const savedAsset: IAsset = {
+        id: asset?.id || 0,
+        name: data.title,
+        description: data.description,
+        media_id: data.mediaId as number,
+        thumbnail_media_id: data.thumbnailMediaId || null,
+        url: data.url || '',
+        fileType: data.fileType || '',
+        tags: data.selectedTags.map(tagId => {
+          const tag = availableTags.find(t => t.id === tagId);
+          return { id: tagId, name: tag?.name || '' };
+        }),
+        relatedBriefs: data.selectedBriefs?.map(briefId => {
+          return { id: parseInt(briefId), title: `Brief ${briefId}` };
+        }) || [],
+        created_at: asset?.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      setAutoSaveStatus('saved');
+      toast.success(`Asset ${asset ? 'updated' : 'created'} successfully`);
+      await onSave(savedAsset);
+      handleClose();
+    } catch (error: any) {
+      console.error(error);
+      setAutoSaveStatus('error');
+      toast.error(`Failed to ${asset ? 'update' : 'create'} asset: ${error.message}`);
+    }
+  };
+
+  const handleMediaUploadComplete = (media: { 
+    id: number; 
+    url: string; 
+    file_type: string;
+    thumbnail_id?: number;
+  }) => {
+    setValue('mediaId', media.id);
+    setValue('url', media.url);
+    setValue('fileType', media.file_type);
+    setUploadProgress(100);
+    setIsUploading(false);
+    setMediaRemoved(false);
+    clearErrors('mediaId');
+
+    // Set thumbnail ID if provided
+    if (media.thumbnail_id) {
+      setValue('thumbnailMediaId', media.thumbnail_id);
+    }
+  };
+
+  const handleUploadStart = () => {
+    setIsUploading(true);
+    setUploadProgress(0);
+  };
+
+  const handleUploadProgress = (progress: number) => {
+    setUploadProgress(progress);
+  };
+
+  const toggleTag = (tagId: number) => {
+    const currentTags = watch('selectedTags');
+    const newTags = currentTags.includes(tagId)
+      ? currentTags.filter(id => id !== tagId)
+      : [...currentTags, tagId];
+    
+    setValue('selectedTags', newTags, { shouldDirty: true, shouldValidate: true });
+  };
+
+  const availableTags = (tagsData?.getTags || []).filter((tag): tag is Tag => !!tag && !!tag.id && !!tag.name);
+
+  // Field error display component
+  const FieldError = ({ error }: { error?: string }) => {
+    if (!error) return null;
+    return (
+      <div className="flex items-center gap-2 mt-1 text-sm text-destructive">
+        <AlertCircle className="h-4 w-4" />
+        <span>{error}</span>
+      </div>
+    );
+  };
+
+  // Auto-save status indicator
+  const AutoSaveIndicator = () => {
+    if (autoSaveStatus === 'idle' || !asset?.id) return null;
+    
+    return (
+      <div className={cn(
+        "flex items-center gap-2 text-xs",
+        autoSaveStatus === 'saving' && "text-muted-foreground",
+        autoSaveStatus === 'saved' && "text-green-600",
+        autoSaveStatus === 'error' && "text-red-600"
+      )}>
+        {autoSaveStatus === 'saving' && (
+          <>
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Saving...</span>
+          </>
+        )}
+        {autoSaveStatus === 'saved' && (
+          <>
+            <Save className="h-3 w-3" />
+            <span>Saved</span>
+          </>
+        )}
+        {autoSaveStatus === 'error' && (
+          <>
+            <AlertCircle className="h-3 w-3" />
+            <span>Failed to save</span>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderPreview = () => {
+    const url = watch('url') || asset?.url;
+    const type = watch('fileType') || asset?.fileType;
+
+    if (!url || !type || mediaRemoved) return null;
+
+    if (type.startsWith('image/')) {
+      return (
+        <img
+          src={url}
+          alt="Preview"
+          className="object-contain w-full h-full"
+        />
+      );
+    }
+
+    if (type.startsWith('video/')) {
+      return (
+        <video 
+          src={url}
+          controls
+          className="object-contain w-full h-full"
+          poster={asset?.thumbnail_media_id ? `/api/media/${asset.thumbnail_media_id}` : undefined}
+        >
+          Your browser does not support the video tag.
+        </video>
+      );
+    }
+
+    if (type === 'application/pdf') {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-2">
+          <FileIcon className="w-16 h-16 text-muted-foreground" />
+          <a 
+            href={url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            View PDF
+          </a>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2">
+        <FileIcon className="w-16 h-16 text-muted-foreground" />
+        <span className="text-muted-foreground">
+          {type} file
+        </span>
+      </div>
+    );
+  };
+
+  // Check if media exists
+  const hasMedia = (watch('url') || asset?.url) && !mediaRemoved;
+
+  useEffect(() => {
+    if (!isOpen) {
+      // Reset form values
+      reset({
+        title: '',
+        description: '',
+        mediaId: undefined,
+        thumbnailMediaId: undefined,
+        selectedTags: [],
+        selectedBriefs: [],
+        fileType: '',
+        url: '',
+      });
+      
+      // Reset UI state
+      setMediaRemoved(false);
+      setAutoSaveStatus('idle');
+      setIsUploading(false);
+      setUploadProgress(0);
+      setTagPopoverOpen(false);
+    } else if (asset) {
+      // Only populate form if modal is opening with an asset
+      reset({
+        title: asset?.name || '',
+        description: asset?.description || '',
+        mediaId: asset?.media_id ? Number(asset.media_id) : undefined,
+        thumbnailMediaId: asset?.thumbnail_media_id ? Number(asset.thumbnail_media_id) : undefined,
+        selectedTags: asset?.tags?.map(tag => tag.id) || [],
+        selectedBriefs: asset?.relatedBriefs?.map(brief => String(brief.id)) || [],
+        fileType: asset?.fileType || '',
+        url: asset?.url || '',
+      });
+    }
+  }, [isOpen, asset, reset]);
+
+  useEffect(() => {
+    // Cleanup function that will run when component unmounts or dependencies change
+    return () => {
+      // Reset everything when the component is unmounted or modal is closed
+      if (!isOpen) {
+        reset({
+          title: '',
+          description: '',
+          mediaId: undefined,
+          thumbnailMediaId: undefined,
+          selectedTags: [],
+          selectedBriefs: [],
+          fileType: '',
+          url: '',
+        });
+        
+        // Clean up all state
+        setMediaRemoved(false);
+        setAutoSaveStatus('idle');
+        setIsUploading(false);
+        setUploadProgress(0);
+        setTagPopoverOpen(false);
+        
+        // Reset the form element directly
+        if (formRef.current) {
+          console.log('RESTING');
+          formRef.current.reset();
         }
       }
-    })
-  }
-
-  const filteredTags = allPossibleTags
-    .filter((tag) => tag.toLowerCase().includes(tagInput.toLowerCase()) && !formData.tags.includes(tag))
-    .slice(0, 5)
+    };
+  }, [isOpen, reset]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {asset ? (
-              <>
-                <span>Asset Details:</span>
-                <span className="font-normal">{formData.name}</span>
-              </>
-            ) : (
-              "Upload New Asset"
-            )}
-          </DialogTitle>
+    <Dialog 
+      open={isOpen} 
+      onOpenChange={(open) => {
+        if (!open) {
+          handleClose();
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-[800px] flex flex-col h-[80vh]">
+        <DialogHeader className="flex flex-row justify-between items-center">
+          <DialogTitle>{asset ? 'Edit Asset' : 'Upload Asset'}</DialogTitle>
+          <AutoSaveIndicator />
         </DialogHeader>
 
-        <div className="space-y-6">
-          {!asset && !previewFile && (
-            <div
-              className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center ${
-                dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25"
-              }`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-            >
-              <div className="flex flex-col items-center justify-center text-center">
-                <Upload className="h-10 w-10 text-muted-foreground mb-2" />
-                <h3 className="font-medium text-lg">Drag & drop file here</h3>
-                <p className="text-sm text-muted-foreground mb-4">or click to browse files from your computer</p>
-                <Button variant="outline" onClick={() => inputRef.current.click()}>
-                  Choose File
-                </Button>
-                <input ref={inputRef} type="file" className="hidden" onChange={handleFileChange} />
+        <div className="flex-1 overflow-y-auto py-4">
+          <form 
+            ref={formRef}
+            onSubmit={handleSubmit(onSubmitForm as any)} 
+            className="space-y-4"
+            id="asset-form"
+          >
+            <div className="grid gap-2">
+              <div className="flex justify-between items-center">
+                <Label>File</Label>
+                {hasMedia && (
+                  <Button 
+                    type="button" 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={handleRemoveMedia}
+                    disabled={isUploading || isSubmitting}
+                    className="flex items-center gap-1"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Remove</span>
+                  </Button>
+                )}
               </div>
-            </div>
-          )}
-
-          {(asset || previewFile) && (
-            <div className="grid gap-6">
-              <div className="flex items-start gap-4">
-                <div className="w-32 h-32 rounded-md overflow-hidden bg-muted flex items-center justify-center">
-                  {asset?.type === "image" || previewFile?.type === "image" ? (
-                    <div className="relative w-full h-64 rounded-md overflow-hidden bg-muted">
-                      <Image
-                        src={previewFile?.url || asset?.url || "/placeholder.svg"}
-                        alt={formData.name}
-                        fill
-                        className="object-contain"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-full h-64 flex flex-col items-center justify-center bg-muted rounded-lg">
-                      <FileIcon className="h-16 w-16 text-muted-foreground" />
-                      <p className="mt-2 text-sm text-muted-foreground">{previewFile?.name || asset?.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatFileSize(previewFile?.size || asset?.size || 0)}
-                      </p>
-                    </div>
+              
+              {(!hasMedia) && (
+                <MediaUpload
+                  onUploadComplete={handleMediaUploadComplete}
+                  onUploadError={(error) => {
+                    toast.error(error.message);
+                    setIsUploading(false);
+                    setUploadProgress(0);
+                  }}
+                  onUploadStart={handleUploadStart}
+                  onUploadProgress={handleUploadProgress}
+                  disabled={isUploading || isSubmitting}
+                  accept="image/*,video/*,application/pdf"
+                  maxSize={50 * 1024 * 1024} // 50MB
+                  className={cn(
+                    "w-full",
+                    !watch('mediaId') && !asset && !mediaRemoved && "border-destructive"
                   )}
-                </div>
-                <div className="flex-1 space-y-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="name">Asset Name</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => handleChange("name", e.target.value)}
-                      placeholder="Enter asset name"
-                    />
-                  </div>
-
-                  <div className="grid gap-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) => handleChange("description", e.target.value)}
-                      placeholder="Enter asset description"
-                      className="min-h-[80px]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="tags">Tags</Label>
-                <div className="flex flex-col space-y-2">
-                  <TokenizedSelect
-                    placeholder="Add tags..."
-                    options={allPossibleTags.map((tag) => ({ value: tag, label: tag }))}
-                    value={formData.tags}
-                    onChange={(value) => handleChange("tags", Array.isArray(value) ? value : [value])}
-                    searchPlaceholder="Search tags..."
-                    multiSelect={true}
-                  />
-                  {formData.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {formData.tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="flex items-center gap-1">
-                          {tag}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-4 w-4 p-0 ml-1"
-                            onClick={() => handleRemoveTag(tag)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm text-muted-foreground">File Type</Label>
-                  <div className="font-medium mt-1">{previewFile?.type || asset?.type || "Unknown"}</div>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">File Size</Label>
-                  <div className="font-medium mt-1">{formatFileSize(previewFile?.size || asset?.size || 0)}</div>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">Created By</Label>
-                  <div className="font-medium mt-1 flex items-center gap-2">
-                    <Avatar className="h-5 w-5">
-                      <AvatarImage
-                        src={formData.createdBy?.avatar || "/placeholder.svg"}
-                        alt={formData.createdBy?.name}
-                      />
-                      <AvatarFallback>{formData.createdBy?.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    {formData.createdBy?.name}
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">Created At</Label>
-                  <div className="font-medium mt-1">{formatDate(formData.createdAt)}</div>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <Label>Related Briefs</Label>
-                <TokenizedSelect
-                  placeholder="Link briefs..."
-                  options={mockBriefs.map((brief) => ({
-                    value: brief.id,
-                    label: brief.title,
-                    icon: (
-                      <span
-                        className="inline-block px-1.5 py-0.5 rounded text-[10px]"
-                        style={{ backgroundColor: getStatusColorForBadge(brief.status) }}
-                      >
-                        {brief.status}
-                      </span>
-                    ),
-                  }))}
-                  value={formData.relatedBriefs}
-                  onChange={(value) => handleChange("relatedBriefs", Array.isArray(value) ? value : [value])}
-                  searchPlaceholder="Search briefs..."
-                  multiSelect={true}
                 />
-              </div>
+              )}
+              {!watch('mediaId') && !asset && !mediaRemoved && <FieldError error="Please upload a file" />}
+              {isUploading && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm text-muted-foreground">
+                      Uploading... {Math.round(uploadProgress)}%
+                    </span>
+                  </div>
+                  <Progress value={uploadProgress} className="h-1" />
+                </div>
+              )}
+            </div>
 
-              <Separator />
+            {hasMedia && (
+              <>
+                <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-gray-100">
+                  {renderPreview()}
+                </div>
+              </>
+            )}
 
-              <div className="space-y-3">
-                <Label>Comments</Label>
-                <EnhancedCommentSection comments={formData.comments} onAddComment={handleAddComment} />
+            <div className="grid gap-2">
+              <Label htmlFor="title">Title *</Label>
+              <Controller
+                name="title"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    id="title"
+                    {...field}
+                    placeholder="Enter asset title"
+                    disabled={isUploading || isSubmitting}
+                    className={cn(
+                      errors.title && "border-destructive"
+                    )}
+                  />
+                )}
+              />
+              <FieldError error={errors.title?.message} />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="description">Description *</Label>
+              <Controller
+                name="description"
+                control={control}
+                render={({ field }) => (
+                  <Textarea
+                    id="description"
+                    {...field}
+                    placeholder="Enter asset description"
+                    rows={4}
+                    disabled={isUploading || isSubmitting}
+                    className={cn(
+                      errors.description && "border-destructive"
+                    )}
+                  />
+                )}
+              />
+              <FieldError error={errors.description?.message} />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Tags *</Label>
+              <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={tagPopoverOpen}
+                    className={cn(
+                      "justify-between",
+                      errors.selectedTags && "border-destructive"
+                    )}
+                    disabled={isUploading || isSubmitting}
+                  >
+                    {watch('selectedTags')?.length > 0
+                      ? `${watch('selectedTags')?.length} tags selected`
+                      : "Select tags..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0">
+                  <Command>
+                    <CommandInput placeholder="Search tags..." />
+                    <CommandEmpty>No tags found.</CommandEmpty>
+                    <CommandGroup>
+                      {availableTags.map((tag) => (
+                        <CommandItem
+                          key={tag.id}
+                          onSelect={() => toggleTag(tag.id)}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              watch('selectedTags')?.includes(tag.id) ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          {tag.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <FieldError error={errors.selectedTags?.message} />
+              <div className="flex flex-wrap gap-2 mt-2">
+                {watch('selectedTags')?.map((tagId) => {
+                  const tag = availableTags.find(t => t.id === tagId);
+                  if (!tag) return null;
+                  return (
+                    <Badge
+                      key={tag.id}
+                      variant="secondary"
+                      className="cursor-pointer"
+                      onClick={() => !isUploading && !isSubmitting && toggleTag(tag.id)}
+                    >
+                      {tag.name}
+                      <span className="ml-1 text-xs">×</span>
+                    </Badge>
+                  );
+                })}
               </div>
             </div>
-          )}
+
+            <div className="grid gap-2">
+              <Label>Link to Briefs</Label>
+              <BriefTokenizeInput 
+                defaultValues={watch('selectedBriefs') || []}
+                onChange={handleBriefChange}
+                placeholder="Link to briefs..."
+              />
+            </div>
+          </form>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
+        <DialogFooter className="pt-4 border-t mt-auto">
+          <Button 
+            type="button"
+            variant="outline" 
+            onClick={handleClose}
+            disabled={isUploading || isSubmitting}
+          >
+            {asset?.id && autoSaveStatus !== 'idle' ? 'Close' : 'Cancel'}
           </Button>
-          <Button onClick={handleSubmit} disabled={!formData.name || (!asset && !previewFile)}>
-            {asset ? "Save Changes" : "Upload Asset"}
-          </Button>
+          {(asset?.id === undefined || autoSaveStatus === 'idle') && (
+            <Button 
+              type="button"
+              onClick={submitForm}
+              disabled={((!watch('mediaId') && !asset) && !mediaRemoved) || isUploading || isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                asset ? 'Update' : 'Create'
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
-}
-
-function getStatusColor(status) {
-  switch (status.toLowerCase()) {
-    case "draft":
-      return "bg-yellow-100 text-yellow-800"
-    case "review":
-      return "bg-blue-100 text-blue-800"
-    case "approved":
-      return "bg-green-100 text-green-800"
-    default:
-      return "bg-gray-100 text-gray-800"
-  }
-}
+  );
+};

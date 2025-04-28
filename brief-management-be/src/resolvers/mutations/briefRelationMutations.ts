@@ -5,7 +5,7 @@ export const briefRelationMutations = {
   // BriefAsset mutations
   createBriefAsset: async (_: any, { input }: { input: Omit<BriefAsset, 'id' | 'created_at'> }) => {
     const { data, error } = await supabase
-      .from('brief_assests')
+      .from('brief_assets')
       .insert([input])
       .select()
       .single();
@@ -15,7 +15,7 @@ export const briefRelationMutations = {
   },
   deleteBriefAsset: async (_: any, { id }: { id: number }) => {
     const { error } = await supabase
-      .from('brief_assests')
+      .from('brief_assets')
       .delete()
       .eq('id', id);
     

@@ -1,22 +1,30 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, Dispatch, SetStateAction, useEffect, useRef, useCallback } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileIcon, Grid, List, MoreHorizontal, Upload } from "lucide-react"
-import { mockAssets } from "@/lib/mock-data"
+import { FileIcon, Grid, List, MoreHorizontal, Upload, Search, ArrowUpDown, Loader2 } from "lucide-react"
 import { formatDate, formatFileSize } from "@/lib/utils"
-import AssetModal from "@/components/asset-modal"
+import { AssetModal } from "@/components/asset-modal"
+import { AssetUpdateModal } from "@/components/asset-update-modal"
 import AssetPreviewModal from "@/components/asset-preview-modal"
+import { Input } from "@/components/ui/input"
 import Image from "next/image"
-import { SortableTable } from "@/components/sortable-table"
-import { TokenizedSelect } from "@/components/tokenized-select"
+import { useToast } from "@/components/ui/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { 
+  useDeleteAssetMutation,
+  useGetAssetsQuery,
+  SortOrder,
+  AssetSortField,
+  Asset,
+  Media,
+} from "@/src/graphql/generated/graphql"
 
 // Simple skeleton components for loading states
 const AssetGridSkeleton = () => (
@@ -98,100 +106,275 @@ const AssetListSkeleton = () => (
   </div>
 )
 
-export default function AssetList() {
-  const [assets, setAssets] = useState([])
-  const [filteredAssets, setFilteredAssets] = useState([])
-  const [searchQuery, setSearchQuery] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
-  const [editingAsset, setEditingAsset] = useState(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [viewMode, setViewMode] = useState("grid")
-  const [isLoading, setIsLoading] = useState(true)
-  const [previewAsset, setPreviewAsset] = useState(null)
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+// Define our own types to avoid conflicts
+type LocalSortOrder = 'ASC' | 'DESC'
+type LocalAssetSortField = 'NAME' | 'CREATED_AT'
+
+interface AssetListProps {
+  className?: string
+}
+
+interface AssetModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  assetId: number | null;
+  onSuccess?: () => void;
+}
+
+interface LocalAssetFilters {
+  search?: string;
+  sortField?: LocalAssetSortField;
+  sortOrder?: LocalSortOrder;
+  page?: number;
+  pageSize?: number;
+}
+
+type ViewMode = 'grid' | 'list'
+
+interface AssetFilters {
+  search?: string;
+  briefIds?: number[];
+  commentIds?: number[];
+  createdAt?: {
+    start: string;
+    end: string;
+  };
+  description?: string;
+  mediaId?: number;
+  name?: string;
+  tagIds?: number[];
+  thumbnailMediaId?: number;
+}
+
+interface DisplayAsset {
+  id: number;
+  name: string | null;
+  description: string | null;
+  created_at: string;
+  media?: {
+    url: string | null;
+    type: string | null;
+    id: number;
+  } | null;
+  thumbnail?: {
+    url: string | null;
+    id: number;
+  } | null;
+  tags?: Array<{
+    id: number;
+    name: string;
+  }> | null;
+}
+
+export default function AssetList({ className }: AssetListProps) {
+  const { toast } = useToast()
+  const [viewMode, setViewMode] = useState<ViewMode>("grid")
+  const [search, setSearch] = useState("")
+  const [typeFilter, setTypeFilter] = useState<string>("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(20)
+  const [sortField, setSortField] = useState<LocalAssetSortField>("CREATED_AT")
+  const [sortOrder, setSortOrder] = useState<LocalSortOrder>("DESC")
+  const [loadedAssets, setLoadedAssets] = useState<DisplayAsset[]>([])
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+  
+  // Modal states
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
+  const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null)
+  const [selectedAsset, setSelectedAsset] = useState<DisplayAsset | null>(null)
+
+  const { data, loading: isLoading, refetch } = useGetAssetsQuery({
+    variables: {
+      filters: {
+        search: search || undefined,
+        mediaId: typeFilter !== "all" ? parseInt(typeFilter) : undefined,
+      },
+      sort: {
+        field: sortField,
+        order: sortOrder
+      },
+      pagination: {
+        page: currentPage,
+        pageSize,
+      },
+    },
+    fetchPolicy: 'network-only',
+    notifyOnNetworkStatusChange: true,
+  })
+
+  const processAssets = useCallback((assets: Array<any>) => {
+    return assets
+      .filter((asset): asset is NonNullable<typeof asset> => asset !== null)
+      .map(asset => ({
+        id: asset.id,
+        name: asset.name || null,
+        description: asset.description || null,
+        created_at: asset.created_at,
+        media: asset.media ? {
+          id: asset.media.id,
+          url: asset.media.url || null,
+          type: asset.media.file_type || null
+        } : null,
+        thumbnail: asset.thumbnail ? {
+          id: asset.thumbnail.id,
+          url: asset.thumbnail.url || null
+        } : null,
+        tags: asset.tags?.map((tag: { id: number; name: string | null }) => tag ? {
+          id: tag.id,
+          name: tag.name || ''
+        } : null).filter((tag: any): tag is { id: number; name: string } => tag !== null) || null
+      }));
+  }, []);
 
   useEffect(() => {
-    // Simulate loading data
-    setIsLoading(true)
-    const timer = setTimeout(() => {
-      setAssets(mockAssets)
-      setFilteredAssets(mockAssets)
-      setIsLoading(false)
-    }, 1500)
-
-    return () => clearTimeout(timer)
-  }, [])
+    if (data?.getAssets?.assets) {
+      console.log('processing assets')
+      const processedAssets = processAssets(Array.from(data.getAssets.assets));
+      
+      if (currentPage === 1) {
+        console.log('setting loaded assets')
+        setLoadedAssets(processedAssets);
+      } else {
+        setLoadedAssets(prev => [...prev, ...processedAssets]);
+      }
+    }
+  }, [data?.getAssets?.assets, currentPage, processAssets]);
 
   useEffect(() => {
-    filterAssets()
-  }, [searchQuery, typeFilter, assets])
+    setLoadedAssets([]);
+    setCurrentPage(1);
+  }, [search, typeFilter, sortField, sortOrder]);
 
-  const filterAssets = () => {
-    if (assets.length === 0) return
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting && data?.getAssets?.hasNextPage && !isLoading) {
+          setCurrentPage((prev) => prev + 1);
+        }
+      },
+      { threshold: 0.1 }
+    );
 
-    let result = [...assets]
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      result = result.filter(
-        (asset) =>
-          asset.name.toLowerCase().includes(query) ||
-          asset.description?.toLowerCase().includes(query) ||
-          asset.tags?.some((tag) => tag.toLowerCase().includes(query)),
-      )
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
     }
 
-    // Apply type filter
-    if (typeFilter !== "all") {
-      result = result.filter((asset) => asset.type === typeFilter)
-    }
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [data?.getAssets?.hasNextPage, isLoading]);
 
-    setFilteredAssets(result)
+  const assets = loadedAssets;
+  const totalCount = data?.getAssets?.totalCount || 0;
+  const hasNextPage = data?.getAssets?.hasNextPage || false;
+
+  const [deleteAsset] = useDeleteAssetMutation({
+    onCompleted: () => {
+      toast({
+        title: "Success",
+        description: "Asset deleted successfully",
+      })
+      refetch()
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
+    },
+  })
+
+  const handleSort = (field: LocalAssetSortField) => {
+    if (field === sortField) {
+      setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC')
+    } else {
+      setSortField(field)
+      setSortOrder('DESC')
+    }
+    setCurrentPage(1)
   }
 
-  const handleEditAsset = (asset) => {
-    setEditingAsset(asset)
-    setIsModalOpen(true)
+  const handleSearch = (value: string) => {
+    setSearch(value)
+    setCurrentPage(1)
+  }
+
+  const handleTypeFilter = (value: string) => {
+    setTypeFilter(value)
+    setCurrentPage(1)
   }
 
   const handleCreateAsset = () => {
-    setEditingAsset(null)
-    setIsModalOpen(true)
+    setSelectedAssetId(null)
+    setSelectedAsset(null)
+    setIsCreateModalOpen(true)
   }
 
-  const handleSaveAsset = (updatedAsset) => {
-    if (updatedAsset.id) {
-      // Update existing asset
-      setAssets(assets.map((asset) => (asset.id === updatedAsset.id ? updatedAsset : asset)))
-    } else {
-      // Create new asset
-      const newAsset = {
-        ...updatedAsset,
-        id: Date.now().toString(),
-        createdAt: new Date(),
-      }
-      setAssets([...assets, newAsset])
+  const handleUpdateAsset = (assetId: number) => {
+    setSelectedAssetId(assetId)
+    setIsUpdateModalOpen(true)
+  }
+
+  const handlePreviewAsset = (assetId: number) => {
+    setSelectedAssetId(assetId)
+    setIsPreviewModalOpen(true)
+  }
+
+  const handleDeleteAsset = async (assetId: number) => {
+    try {
+      await deleteAsset({
+        variables: { id: assetId },
+      })
+    } catch (error) {
+      console.error("Error deleting asset:", error)
     }
-    setIsModalOpen(false)
-    setEditingAsset(null)
   }
 
-  const handleDeleteAsset = (assetId) => {
-    setAssets(assets.filter((asset) => asset.id !== assetId))
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode)
   }
 
-  const handlePreviewAsset = (asset) => {
-    setPreviewAsset(asset.id)
-    setIsPreviewOpen(true)
-  }
+  const LoadingItems = () => (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Card key={i} className="overflow-hidden">
+          <div className="aspect-square relative bg-muted">
+            <Skeleton className="h-full w-full" />
+          </div>
+          <CardContent className="p-3">
+            <Skeleton className="h-4 w-full mb-2" />
+            <Skeleton className="h-4 w-2/3" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+
+  const getAssetPreview = (asset: DisplayAsset) => {
+    if (!asset?.media?.type) return null;
+
+    if (asset.media.type.startsWith("image/")) {
+      return asset.media.url;
+    } else if (asset.media.type.startsWith("video/")) {
+    console.log(asset)
+      return asset.thumbnail?.url || null;
+    }
+    return null;
+  };
 
   const renderGridView = () => {
-    if (isLoading) {
+    if (isLoading && currentPage === 1) {
       return <AssetGridSkeleton />
     }
 
-    if (filteredAssets.length === 0) {
+    if (assets.length === 0) {
       return (
         <div className="text-center py-12 border rounded-lg">
           <FileIcon className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -206,275 +389,244 @@ export default function AssetList() {
     }
 
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {filteredAssets.map((asset) => (
-          <Card
-            key={asset.id}
-            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => handlePreviewAsset(asset)}
-          >
-            <div className="aspect-square relative bg-muted">
-              {asset.type === "image" ? (
-                <Image src={asset.url || "/placeholder.svg"} alt={asset.name} fill className="object-cover" />
-              ) : asset.type === "video" ? (
-                <div className="w-full h-full relative">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {assets.map((asset: DisplayAsset) => (
+            <Card
+              key={asset?.id}
+              className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => handlePreviewAsset(asset?.id || 0)}
+            >
+              <div className="aspect-square relative bg-muted">
+                {getAssetPreview(asset) ? (
                   <Image
-                    src={asset.thumbnail || "/placeholder.svg?height=200&width=200&query=video thumbnail"}
-                    alt={asset.name}
+                    src={getAssetPreview(asset) || ""}
+                    alt={asset?.name || ""}
                     fill
                     className="object-cover"
                   />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="h-10 w-10 rounded-full bg-black/60 flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-5 h-5">
-                        <path
-                          fillRule="evenodd"
-                          d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </div>
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center">
+                    <FileIcon className="h-12 w-12 text-muted-foreground" />
                   </div>
-                </div>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <FileIcon className="h-12 w-12 text-muted-foreground" />
-                </div>
-              )}
-            </div>
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between">
-                <div className="truncate font-medium text-sm">{asset.name}</div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" className="h-8 w-8 p-0">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleEditAsset(asset)
-                      }}
-                    >
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDeleteAsset(asset.id)
-                      }}
-                      className="text-destructive"
-                    >
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                <div>{formatFileSize(asset.size)}</div>
-                <div>{formatDate(asset.createdAt)}</div>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {asset.tags?.slice(0, 2).map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-                {asset.tags?.length > 2 && (
-                  <Badge variant="secondary" className="text-xs">
-                    +{asset.tags.length - 2}
-                  </Badge>
+                )}
+                {asset?.media?.type?.startsWith("video/") && (
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                    <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        ))}
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between">
+                  <div className="truncate font-medium text-sm">{asset?.name}</div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" className="h-8 w-8 p-0">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedAsset(asset)
+                          handleUpdateAsset(asset?.id || 0)
+                          setIsCreateModalOpen(true);
+                        }}
+                      >
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteAsset(asset?.id || 0)
+                        }}
+                        className="text-destructive"
+                      >
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+                  <div>{formatDate(asset?.created_at || "")}</div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {asset?.tags?.slice(0, 2).map((tag) => (
+                    <Badge key={tag?.id} variant="secondary" className="text-xs">
+                      {tag?.name}
+                    </Badge>
+                  ))}
+                  {(asset?.tags?.length || 0) > 2 && (
+                    <Badge variant="secondary" className="text-xs">
+                      +{(asset?.tags?.length || 0) - 2}
+                    </Badge>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        {hasNextPage && (
+          <div ref={loadMoreRef} className="py-4 text-center">
+            {isLoading ? (
+              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+            ) : (
+              <p className="text-sm text-muted-foreground">Loading more assets...</p>
+            )}
+          </div>
+        )}
+        {!hasNextPage && assets.length > 0 && (
+          <p className="text-center text-muted-foreground py-4">
+            No more assets to load
+          </p>
+        )}
       </div>
     )
   }
 
   const renderListView = () => {
-    if (isLoading) {
+    if (isLoading && currentPage === 1) {
       return <AssetListSkeleton />
     }
 
     return (
-      <SortableTable
-        data={filteredAssets}
-        columns={[
-          {
-            id: "name",
-            header: "Name",
-            cell: (asset) => (
-              <div className="flex items-center gap-2">
-                {asset.type === "image" ? (
-                  <div className="h-8 w-8 rounded overflow-hidden bg-muted relative">
-                    <Image src={asset.url || "/placeholder.svg"} alt={asset.name} fill className="object-cover" />
-                  </div>
-                ) : asset.type === "video" ? (
-                  <div className="h-8 w-8 rounded overflow-hidden bg-muted relative">
-                    <Image
-                      src={asset.thumbnail || "/placeholder.svg?height=32&width=32&query=video thumbnail"}
-                      alt={asset.name}
-                      fill
-                      className="object-cover"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-3 h-3">
-                        <path
-                          fillRule="evenodd"
-                          d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
+      <div className="space-y-4">
+        <div className="rounded-md border">
+          <div className="relative w-full overflow-auto">
+            <table className="w-full caption-bottom text-sm">
+              <thead className="[&_tr]:border-b">
+                <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                  <th 
+                    className="h-12 px-4 text-left align-middle font-medium cursor-pointer"
+                    onClick={() => handleSort('NAME')}
+                  >
+                    <div className="flex items-center gap-2">
+                      Name
+                      {sortField === 'NAME' && (
+                        <ArrowUpDown className="h-4 w-4" />
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
-                    <FileIcon className="h-4 w-4" />
-                  </div>
-                )}
-                <span className="font-medium">{asset.name}</span>
-              </div>
-            ),
-            sortable: true,
-            sortingFn: (a, b) => a.name.localeCompare(b.name),
-          },
-          {
-            id: "type",
-            header: "Type",
-            cell: (asset) => <Badge variant="outline">{asset.type}</Badge>,
-            sortable: true,
-            sortingFn: (a, b) => a.type.localeCompare(b.type),
-          },
-          {
-            id: "size",
-            header: "Size",
-            cell: (asset) => formatFileSize(asset.size),
-            sortable: true,
-            sortingFn: (a, b) => a.size - b.size,
-          },
-          {
-            id: "createdBy",
-            header: "Created By",
-            cell: (asset) => (
-              <div className="flex items-center gap-2">
-                <Avatar className="h-6 w-6">
-                  <AvatarImage src={asset.createdBy?.avatar || "/placeholder.svg"} alt={asset.createdBy?.name} />
-                  <AvatarFallback>{asset.createdBy?.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <span>{asset.createdBy?.name}</span>
-              </div>
-            ),
-            sortable: true,
-            sortingFn: (a, b) => a.createdBy?.name.localeCompare(b.createdBy?.name || "") || 0,
-          },
-          {
-            id: "createdAt",
-            header: "Created",
-            cell: (asset) => formatDate(asset.createdAt),
-            sortable: true,
-            sortingFn: (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-          },
-          {
-            id: "relatedBriefs",
-            header: "Related Tasks",
-            cell: (asset) =>
-              asset.relatedBriefs?.length ? (
-                <Badge variant="secondary">{asset.relatedBriefs.length} briefs</Badge>
-              ) : (
-                <span className="text-muted-foreground">None</span>
-              ),
-            sortable: true,
-            sortingFn: (a, b) => (a.relatedBriefs?.length || 0) - (b.relatedBriefs?.length || 0),
-          },
-          {
-            id: "actions",
-            header: "",
-            cell: (asset) => (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" className="h-8 w-8 p-0">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handlePreviewAsset(asset)
-                    }}
+                  </th>
+                  <th className="h-12 px-4 text-left align-middle font-medium">Type</th>
+                  <th 
+                    className="h-12 px-4 text-left align-middle font-medium cursor-pointer"
+                    onClick={() => handleSort('CREATED_AT')}
                   >
-                    Preview
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleEditAsset(asset)
-                    }}
-                  >
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteAsset(asset.id)
-                    }}
-                    className="text-destructive"
-                  >
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ),
-          },
-        ]}
-        onRowClick={(asset) => handlePreviewAsset(asset)}
-        isLoading={isLoading}
-      />
+                    <div className="flex items-center gap-2">
+                      Created
+                      {sortField === 'CREATED_AT' && (
+                        <ArrowUpDown className="h-4 w-4" />
+                      )}
+                    </div>
+                  </th>
+                  <th className="h-12 px-4 text-right"></th>
+                </tr>
+              </thead>
+              <tbody className="[&_tr:last-child]:border-0">
+                {assets.map((asset: DisplayAsset) => (
+                  <tr key={asset?.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                    <td className="p-4 align-middle">
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 bg-muted rounded flex items-center justify-center relative">
+                          {getAssetPreview(asset) ? (
+                            <Image
+                              src={getAssetPreview(asset) || ""}
+                              alt={asset?.name || ""}
+                              width={32}
+                              height={32}
+                              className="rounded object-cover"
+                            />
+                          ) : (
+                            <FileIcon className="h-4 w-4" />
+                          )}
+                          {asset?.media?.type?.startsWith("video/") && (
+                            <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded">
+                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        <span className="font-medium">{asset?.name}</span>
+                      </div>
+                    </td>
+                    <td className="p-4 align-middle">
+                      <Badge variant="outline">{asset?.media?.type?.split("/")[1] || "unknown"}</Badge>
+                    </td>
+                    <td className="p-4 align-middle">
+                      {formatDate(asset?.created_at || "")}
+                    </td>
+                    <td className="p-4 align-middle">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedAsset(asset)
+                              handleUpdateAsset(asset?.id || 0)
+                            }}
+                          >
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteAsset(asset?.id || 0)
+                            }}
+                            className="text-destructive"
+                          >
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {hasNextPage && (
+          <div ref={loadMoreRef} className="py-4 text-center">
+            {isLoading ? (
+              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+            ) : (
+              <p className="text-sm text-muted-foreground">Loading more assets...</p>
+            )}
+          </div>
+        )}
+        {!hasNextPage && assets.length > 0 && (
+          <p className="text-center text-muted-foreground py-4">
+            No more assets to load
+          </p>
+        )}
+      </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${className || ""}`}>
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <TokenizedSelect
-          placeholder="Search assets..."
-          options={assets.map((asset) => ({
-            value: asset.id,
-            label: asset.name,
-            icon:
-              asset.type === "image" ? (
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded overflow-hidden bg-muted">
-                  <img src={asset.url || "/placeholder.svg"} alt={asset.name} className="h-full w-full object-cover" />
-                </span>
-              ) : (
-                <span className="inline-flex h-6 w-6 items-center justify-center rounded bg-muted">
-                  <FileIcon className="h-3 w-3" />
-                </span>
-              ),
-          }))}
-          value=""
-          onChange={(value) => {
-            if (value) {
-              const asset = assets.find((a) => a.id === value)
-              if (asset) {
-                setSearchQuery(asset.name)
-              }
-            } else {
-              setSearchQuery("")
-            }
-          }}
-          searchPlaceholder="Search by name, description or tags..."
-          multiSelect={false}
-          className="w-full sm:w-72"
-          isLoading={isLoading}
-        />
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Select value={typeFilter} onValueChange={setTypeFilter} disabled={isLoading}>
-            <SelectTrigger className="w-full sm:w-36">
+        <div className="flex flex-1 gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search assets..."
+              value={search}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={typeFilter} onValueChange={handleTypeFilter}>
+            <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Filter by type" />
             </SelectTrigger>
             <SelectContent>
@@ -485,51 +637,98 @@ export default function AssetList() {
               <SelectItem value="audio">Audio</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={handleCreateAsset} disabled={isLoading}>
-            <Upload className="mr-2 h-4 w-4" />
-            Upload
-          </Button>
         </div>
+        <Button onClick={() => setIsCreateModalOpen(true)} disabled={isLoading}>
+          <Upload className="mr-2 h-4 w-4" />
+          Upload
+        </Button>
       </div>
 
       <div className="flex items-center justify-between mb-4">
-        <Tabs value={viewMode} onValueChange={setViewMode} className="w-full">
+        <Tabs value={viewMode} onValueChange={(value: string) => handleViewModeChange(value as ViewMode)}>
           <TabsList>
-            <TabsTrigger value="grid" className="flex items-center" disabled={isLoading}>
-              <Grid className="mr-2 h-4 w-4" />
+            <TabsTrigger value="grid">
+              <Grid className="h-4 w-4 mr-2" />
               Grid
             </TabsTrigger>
-            <TabsTrigger value="list" className="flex items-center" disabled={isLoading}>
-              <List className="mr-2 h-4 w-4" />
+            <TabsTrigger value="list">
+              <List className="h-4 w-4 mr-2" />
               List
             </TabsTrigger>
           </TabsList>
-          <div className="text-sm text-muted-foreground mt-4">
-            {isLoading
-              ? "Loading assets..."
-              : `${filteredAssets.length} asset${filteredAssets.length !== 1 ? "s" : ""}`}
-          </div>
-          {viewMode === "grid" ? renderGridView() : renderListView()}
         </Tabs>
+        <div className="text-sm text-muted-foreground">
+          {isLoading && currentPage === 1 ? "Loading..." : `${totalCount} asset${totalCount !== 1 ? "s" : ""}`}
+        </div>
       </div>
 
+      {viewMode === "grid" ? renderGridView() : renderListView()}
+
       <AssetModal
-        isOpen={isModalOpen}
+        isOpen={isCreateModalOpen}
         onClose={() => {
-          setIsModalOpen(false)
-          setEditingAsset(null)
+          setIsCreateModalOpen(false)
+          setSelectedAsset(null)
+          setSelectedAssetId(null)
         }}
-        onSave={handleSaveAsset}
-        asset={editingAsset}
+        asset={{
+          id: selectedAsset?.id ?? 0,
+          name: selectedAsset?.name ?? "",
+          description: selectedAsset?.description ?? "",
+          url: selectedAsset?.media?.url ?? "",
+          fileType: selectedAsset?.media?.type ?? "",
+          media_id: selectedAsset?.media?.id ?? 0,
+          thumbnail_media_id: selectedAsset?.thumbnail?.id ?? 0,
+          media: selectedAsset?.media as Media | null,
+          thumbnail: selectedAsset?.thumbnail as Media | null,
+          created_at: selectedAsset?.created_at ?? new Date().toISOString(),
+          tags: selectedAsset?.tags || []
+        }}
+        onSave={async (asset) => {
+          try {
+            setIsCreateModalOpen(false);
+            // First refetch to get new data
+            await refetch();
+            // Then reset the page and clear assets
+            // This will trigger the useEffect that watches data?.getAssets?.assets
+            setCurrentPage(1);
+          } catch (error) {
+            console.error('Error refetching assets:', error);
+            toast({
+              title: "Error",
+              description: "Failed to refresh asset list",
+              variant: "destructive",
+            });
+          }
+        }}
       />
 
+      {/* <AssetUpdateModal
+        assetId={selectedAssetId}
+        isOpen={isUpdateModalOpen}
+        onClose={() => {
+          setIsUpdateModalOpen(false)
+          setSelectedAssetId(null)
+        }}
+        onUpdate={() => {
+          setIsUpdateModalOpen(false)
+          setSelectedAssetId(null)
+          refetch()
+        }}
+      /> */}
+
       <AssetPreviewModal
-        isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
-        assetId={previewAsset}
+        assetId={selectedAssetId}
+        isOpen={isPreviewModalOpen}
+        onClose={() => {
+          setIsPreviewModalOpen(false)
+          setSelectedAssetId(null)
+        }}
         onEdit={(asset) => {
-          setEditingAsset(asset)
-          setIsModalOpen(true)
+          setSelectedAssetId(asset.id);
+          setSelectedAsset(asset);
+          setIsCreateModalOpen(true);
+          setIsPreviewModalOpen(false);
         }}
       />
     </div>

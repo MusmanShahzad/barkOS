@@ -9,18 +9,38 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { FileIcon, MoreHorizontal, Pencil, Trash2, Upload, X } from "lucide-react"
 import Image from "next/image"
+import { useUploadMediaMutation, useDeleteMediaMutation } from "@/src/graphql/generated/graphql"
+import { toast } from "sonner"
 
-export default function FileUploader({ assets, onAddAsset, onRemoveAsset }) {
+interface Asset {
+  id: string | number
+  name: string
+  type: string
+  size: number
+  url: string
+  file?: File
+}
+
+interface FileUploaderProps {
+  assets: Asset[]
+  onAddAsset: (asset: Asset) => void
+  onRemoveAsset: (id: string | number) => void
+}
+
+export default function FileUploader({ assets, onAddAsset, onRemoveAsset }: FileUploaderProps) {
   const [dragActive, setDragActive] = useState(false)
-  const [renamingAsset, setRenamingAsset] = useState(null)
+  const [renamingAsset, setRenamingAsset] = useState<Asset | null>(null)
   const [newName, setNewName] = useState("")
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
-  const [previewAsset, setPreviewAsset] = useState(null)
+  const [previewAsset, setPreviewAsset] = useState<Asset | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
 
-  const inputRef = useRef(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const handleDrag = (e) => {
+  const [uploadMedia] = useUploadMediaMutation()
+  const [deleteMedia] = useDeleteMediaMutation()
+
+  const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
 
@@ -31,56 +51,62 @@ export default function FileUploader({ assets, onAddAsset, onRemoveAsset }) {
     }
   }
 
-  const handleDrop = (e) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    console.log("handleDrop")
     setDragActive(false)
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFiles(e.dataTransfer.files)
+      await handleFiles(e.dataTransfer.files)
     }
   }
 
-  const handleChange = (e) => {
+  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault()
-
+    
     if (e.target.files && e.target.files[0]) {
-      handleFiles(e.target.files)
+      await handleFiles(e.target.files)
     }
   }
 
-  const handleFiles = (files) => {
+  const handleFiles = async (files: FileList) => {
     const filesArray = Array.from(files)
 
-    filesArray.forEach((file) => {
-      // Create a URL for the file
-      const fileUrl = URL.createObjectURL(file)
+    for (const file of filesArray) {
+      try {
+        // Upload to server
+        const { data } = await uploadMedia({
+          variables: { file }
+        })
 
-      // Determine file type
-      const fileType = file.type.split("/")[0]
+        if (data?.uploadMedia) {
+          const newAsset: Asset = {
+            id: data.uploadMedia.id,
+            name: file.name,
+            type: file.type.split("/")[0],
+            size: file.size,
+            url: data.uploadMedia.url,
+          }
 
-      // Create a new asset object
-      const newAsset = {
-        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-        name: file.name,
-        type: fileType,
-        size: file.size,
-        url: fileUrl,
-        file: file, // Store the actual file for later use
+          onAddAsset(newAsset)
+          toast.success("File uploaded successfully")
+        }
+      } catch (error) {
+        console.error("Upload error:", error)
+        toast.error("Failed to upload file")
       }
-
-      onAddAsset(newAsset)
-    })
+    }
   }
 
-  const handleRenameClick = (asset) => {
+  const handleRenameClick = (asset: Asset) => {
     setRenamingAsset(asset)
     setNewName(asset.name)
     setIsRenameDialogOpen(true)
   }
 
   const handleRename = () => {
-    if (newName.trim()) {
+    if (newName.trim() && renamingAsset) {
       const updatedAsset = {
         ...renamingAsset,
         name: newName.trim(),
@@ -95,12 +121,25 @@ export default function FileUploader({ assets, onAddAsset, onRemoveAsset }) {
     }
   }
 
-  const handlePreview = (asset) => {
+  const handlePreview = (asset: Asset) => {
     setPreviewAsset(asset)
     setIsPreviewOpen(true)
   }
 
-  const formatFileSize = (bytes) => {
+  const handleDelete = async (id: string | number) => {
+    try {
+      await deleteMedia({
+        variables: { id: Number(id) }
+      })
+      onRemoveAsset(id)
+      toast.success("File deleted successfully")
+    } catch (error) {
+      console.error("Delete error:", error)
+      toast.error("Failed to delete file")
+    }
+  }
+
+  const formatFileSize = (bytes: number) => {
     if (bytes === 0) return "0 Bytes"
     const k = 1024
     const sizes = ["Bytes", "KB", "MB", "GB"]
@@ -123,8 +162,8 @@ export default function FileUploader({ assets, onAddAsset, onRemoveAsset }) {
           <Upload className="h-10 w-10 text-muted-foreground mb-2" />
           <h3 className="font-medium text-lg">Drag & drop files here</h3>
           <p className="text-sm text-muted-foreground mb-4">or click to browse files from your computer</p>
-          <Button variant="outline" onClick={() => inputRef.current.click()}>
-            Choose Files
+          <Button variant="outline" onClick={() => inputRef.current?.click()}>
+            Choose Files here
           </Button>
           <input ref={inputRef} type="file" multiple className="hidden" onChange={handleChange} />
         </div>
@@ -173,7 +212,7 @@ export default function FileUploader({ assets, onAddAsset, onRemoveAsset }) {
                         <Pencil className="mr-2 h-4 w-4" />
                         Rename
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onRemoveAsset(asset.id)}>
+                      <DropdownMenuItem onClick={() => handleDelete(asset.id)}>
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
                       </DropdownMenuItem>

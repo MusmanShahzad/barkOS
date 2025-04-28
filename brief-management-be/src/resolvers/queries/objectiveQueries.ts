@@ -14,7 +14,8 @@ export const objectiveQueries = {
   getObjectives: async () => {
     const { data, error } = await supabase
       .from('objectives')
-      .select('*');
+      .select('*')
+      .order('name', { ascending: true });
     
     if (error) throw new Error(error.message);
     return data;

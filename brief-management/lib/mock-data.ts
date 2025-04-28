@@ -81,6 +81,27 @@ export const mockUsers = [
     phone: "+1 (555) 567-8901",
     bio: "Production manager with expertise in project management and team coordination.",
   },
+  {
+    id: "6",
+    name: "John Doe",
+    email: "john@example.com",
+    avatar: "/thoughtful-alex.png",
+    role: "admin",
+  },
+  {
+    id: "7",
+    name: "Jane Doe",
+    email: "jane@example.com",
+    avatar: "/thoughtful-alex.png",
+    role: "admin",
+  },
+  {
+    id: "8",
+    name: "John Doe",
+    email: "john@example.com",
+    avatar: "/thoughtful-alex.png",
+    role: "admin",
+  },
 ]
 
 export const mockBriefs = [

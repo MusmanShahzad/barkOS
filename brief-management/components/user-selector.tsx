@@ -36,9 +36,19 @@ export default function UserSelector({ selectedUsers, onUsersChange }) {
               <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
             </Avatar>
             <span className="text-sm">{user.name}</span>
-            <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full" onClick={() => removeUser(user.id)}>
+            <span 
+              role="button"
+              tabIndex={0}
+              className="inline-flex items-center justify-center h-5 w-5 rounded-full hover:bg-muted-foreground/10 cursor-pointer"
+              onClick={() => removeUser(user.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  removeUser(user.id);
+                }
+              }}
+            >
               <X className="h-3 w-3" />
-            </Button>
+            </span>
           </div>
         ))}
       </div>

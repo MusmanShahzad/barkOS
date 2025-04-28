@@ -1,0 +1,18 @@
+query GetUsers($filters: UserFilters, $pagination: PaginationInput, $sort: [UserSort]) {
+  getUsers(filters: $filters, pagination: $pagination, sort: $sort) {
+    currentPage
+    hasNextPage
+    hasPreviousPage
+    totalCount
+    totalPages
+    users {
+      bio
+      created_at
+      email
+      full_name
+      id
+      phone_number
+      profile_image
+    }
+  }
+}

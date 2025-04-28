@@ -1,0 +1,457 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type Asset {
+  briefs: [Brief]
+  comments: [Comment]
+  created_at: String!
+  description: String
+  id: Int!
+  media: Media
+  media_id: Int!
+  name: String
+  tags: [Tag]
+  thumbnail: Media
+  thumbnail_media_id: Int
+}
+
+type AssetComment {
+  asset: Asset
+  asset_id: Int
+  comment: Comment
+  comment_id: Int
+  created_at: String!
+  id: Int!
+}
+
+input AssetCommentInput {
+  asset_id: Int
+  comment_id: Int
+}
+
+input AssetFilters {
+  briefIds: [Int]
+  commentIds: [Int]
+  createdAt: DateRangeInput
+  description: String
+  mediaId: Int
+  name: String
+  search: String
+  tagIds: [Int]
+  thumbnailMediaId: Int
+}
+
+input AssetInput {
+  description: String
+  media_id: Int!
+  name: String
+  relatedBriefIds: [Int]
+  tagIds: [Int]
+  thumbnail_media_id: Int
+}
+
+input AssetSort {
+  field: AssetSortField!
+  order: SortOrder!
+}
+
+enum AssetSortField {
+  CREATED_AT
+  DESCRIPTION
+  NAME
+}
+
+type AssetTag {
+  asset: Asset
+  asset_id: Int
+  created_at: String!
+  id: Int!
+  tag: Tag
+  tag_id: Int
+}
+
+input AssetTagInput {
+  asset_id: Int
+  tag_id: Int
+}
+
+input AssetUpdateInput {
+  commentIds: [Int]
+  description: String
+  media_id: Int
+  name: String
+  relatedBriefIds: [Int]
+  tagIds: [Int]
+  thumbnail_media_id: Int
+}
+
+type Brief {
+  about_hook: String
+  about_target_audience: String
+  assets: [Asset]
+  comments: [Comment]
+  created_at: String!
+  description: String
+  go_live_on: String
+  id: Int!
+  objective: Objective
+  product: Product
+  related_briefs: [Brief]
+  status: BriefStatus
+  tags: [Tag]
+  title: String
+  users: [User]
+}
+
+type BriefAsset {
+  asset: Asset
+  asset_id: Int
+  brief: Brief
+  brief_id: Int
+  created_at: String!
+  id: Int!
+}
+
+input BriefAssetInput {
+  asset_id: Int
+  brief_id: Int
+}
+
+type BriefComment {
+  brief: Brief
+  brief_id: Int
+  comment: Comment
+  comment_id: Int
+  created_at: String!
+  id: Int!
+}
+
+input BriefCommentInput {
+  brief_id: Int
+  comment_id: Int
+}
+
+input BriefFilters {
+  assetIds: [Int]
+  createdAt: DateRangeInput
+  goLiveOn: DateRangeInput
+  objectiveId: Int
+  productId: Int
+  search: String
+  status: [BriefStatus]
+  tagIds: [Int]
+  title: String
+  userIds: [Int]
+}
+
+input BriefInput {
+  about_hook: String
+  about_target_audience: String
+  assetIds: [Int]
+  description: String
+  go_live_on: String
+  objective_id: Int
+  product_id: Int
+  relatedBriefIds: [Int]
+  status: BriefStatus
+  tagIds: [Int]
+  title: String
+  userIds: [Int]
+}
+
+input BriefSort {
+  field: BriefSortField!
+  order: SortOrder!
+}
+
+enum BriefSortField {
+  CREATED_AT
+  GO_LIVE_ON
+  STATUS
+  TITLE
+}
+
+enum BriefStatus {
+  Approved
+  Draft
+  Live
+  Review
+}
+
+type BriefTag {
+  brief: Brief
+  brief_id: Int
+  created_at: String!
+  id: Int!
+  tag: Tag
+  tag_id: Int
+}
+
+input BriefTagInput {
+  brief_id: Int
+  tag_id: Int
+}
+
+type Comment {
+  assets: [Asset]
+  briefs: [Brief]
+  created_at: String!
+  id: Int!
+  text: String
+  user: User
+  user_id: Int
+}
+
+input CommentInput {
+  text: String
+  user_id: Int
+}
+
+input DateRangeInput {
+  endDate: String
+  startDate: String
+}
+
+type Media {
+  assets: [Asset]
+  created_at: String
+  file_type: String
+  id: Int!
+  thumbnailFor: [Asset]
+  url: String
+}
+
+input MediaInput {
+  file: Upload!
+}
+
+type MediaUploadResponse {
+  created_at: String!
+  file_type: String!
+  id: Int!
+  name: String!
+  s3_key: String!
+  size: Int!
+  url: String!
+}
+
+type Mutation {
+  addUserToBrief(briefId: Int!, userId: Int!): Boolean
+  createAsset(input: AssetInput!): Asset
+  createAssetComment(input: AssetCommentInput!): AssetComment
+  createAssetTag(input: AssetTagInput!): AssetTag
+  createBrief(input: BriefInput!): Brief
+  createBriefAsset(input: BriefAssetInput!): BriefAsset
+  createBriefComment(input: BriefCommentInput!): BriefComment
+  createBriefTag(input: BriefTagInput!): BriefTag
+  createComment(input: CommentInput!): Comment
+  createMedia(input: MediaInput!): Media
+  createObjective(input: ObjectiveInput!): Objective
+  createProduct(input: ProductInput!): Product
+  createTag(input: TagInput!): Tag
+  createUser(input: UserInput!): User
+  deleteAsset(id: Int!): Boolean
+  deleteAssetComment(id: Int!): Boolean
+  deleteAssetTag(id: Int!): Boolean
+  deleteBrief(id: Int!): Boolean
+  deleteBriefAsset(id: Int!): Boolean
+  deleteBriefComment(id: Int!): Boolean
+  deleteBriefTag(id: Int!): Boolean
+  deleteComment(id: Int!): Boolean
+  deleteMedia(id: Int!): Boolean
+  deleteObjective(id: Int!): Boolean
+  deleteProduct(id: Int!): Boolean
+  deleteTag(id: Int!): Boolean
+  deleteUser(id: Int!): Boolean
+  removeUserFromBrief(briefId: Int!, userId: Int!): Boolean
+  safeUpdateBrief(id: Int!, input: SafeBriefUpdateInput!): Brief
+  updateAsset(id: Int!, input: AssetUpdateInput!): Asset
+  updateBrief(id: Int!, input: BriefInput!): Brief
+  updateComment(id: Int!, input: CommentInput!): Comment
+  updateMedia(id: Int!, input: MediaInput!): Media
+  updateObjective(id: Int!, input: ObjectiveInput!): Objective
+  updateProduct(id: Int!, input: ProductInput!): Product
+  updateTag(id: Int!, input: TagInput!): Tag
+  updateUser(id: Int!, input: UserInput!): User
+  uploadMedia(file: Upload!): MediaUploadResponse!
+}
+
+type Objective {
+  briefs: [Brief]
+  created_at: String!
+  description: String
+  id: Int!
+  name: String
+}
+
+input ObjectiveInput {
+  description: String
+  name: String
+}
+
+type PaginatedAssets {
+  assets: [Asset]!
+  currentPage: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  totalCount: Int!
+  totalPages: Int!
+}
+
+type PaginatedBriefs {
+  briefs: [Brief]!
+  currentPage: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  totalCount: Int!
+  totalPages: Int!
+}
+
+type PaginatedUsers {
+  currentPage: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  totalCount: Int!
+  totalPages: Int!
+  users: [User]!
+}
+
+input PaginationInput {
+  page: Int! = 1
+  pageSize: Int! = 10
+}
+
+type Product {
+  briefs: [Brief]
+  created_at: String!
+  description: String
+  id: Int!
+  name: String
+}
+
+input ProductInput {
+  description: String
+  name: String
+}
+
+type Query {
+  getAsset(id: Int!): Asset
+  getAssetComment(id: Int!): AssetComment
+  getAssetComments: [AssetComment]
+  getAssetCommentsByAssetId(assetId: Int!): [AssetComment]
+  getAssetTag(id: Int!): AssetTag
+  getAssetTags: [AssetTag]
+  getAssetTagsByAssetId(assetId: Int!): [AssetTag]
+  getAssets(
+    filters: AssetFilters
+    pagination: PaginationInput
+    sort: [AssetSort]
+  ): PaginatedAssets!
+  getBrief(id: Int!): Brief
+  getBriefAsset(id: Int!): BriefAsset
+  getBriefAssets: [BriefAsset]
+  getBriefAssetsByBriefId(briefId: Int!): [BriefAsset]
+  getBriefComment(id: Int!): BriefComment
+  getBriefComments: [BriefComment]
+  getBriefCommentsByBriefId(briefId: Int!): [BriefComment]
+  getBriefTag(id: Int!): BriefTag
+  getBriefTags: [BriefTag]
+  getBriefTagsByBriefId(briefId: Int!): [BriefTag]
+  getBriefUsers(briefId: Int!): [User]
+  getBriefs(
+    filters: BriefFilters
+    pagination: PaginationInput
+    sort: [BriefSort]
+  ): PaginatedBriefs!
+  getComment(id: Int!): Comment
+  getComments: [Comment]
+  getMedia(id: Int!): Media
+  getMedias: [Media]
+  getObjective(id: Int!): Objective
+  getObjectives: [Objective]
+  getProduct(id: Int!): Product
+  getProducts: [Product]
+  getTag(id: Int!): Tag
+  getTags: [Tag]
+  getUser(id: Int!): User
+  getUserBriefs(userId: Int!): [Brief]
+  getUsers(
+    filters: UserFilters
+    pagination: PaginationInput
+    sort: [UserSort]
+  ): PaginatedUsers!
+  hello: String
+}
+
+input SafeBriefUpdateInput {
+  about_hook: String
+  about_target_audience: String
+  description: String
+  go_live_on: String
+  objective_id: Int
+  product_id: Int
+  status: BriefStatus
+  title: String
+}
+
+enum SortOrder {
+  ASC
+  DESC
+}
+
+type Tag {
+  assets: [Asset]
+  briefs: [Brief]
+  created_at: String
+  id: Int!
+  name: String
+}
+
+input TagInput {
+  name: String
+}
+
+"""
+The `Upload` scalar type represents a file upload.
+"""
+scalar Upload
+
+type User {
+  bio: String
+  briefs: [Brief]
+  created_at: String!
+  email: String
+  full_name: String
+  id: Int!
+  phone_number: String
+  profile_image: String
+}
+
+input UserFilters {
+  briefIds: [Int]
+  createdAt: DateRangeInput
+  email: String
+  fullName: String
+  search: String
+}
+
+input UserInput {
+  bio: String
+  email: String
+  full_name: String
+  phone_number: String
+  profile_image: String
+}
+
+input UserSort {
+  field: UserSortField!
+  order: SortOrder!
+}
+
+enum UserSortField {
+  CREATED_AT
+  EMAIL
+  FULL_NAME
+}

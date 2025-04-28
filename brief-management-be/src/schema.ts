@@ -1,4 +1,15 @@
 export const typeDefs = `#graphql
+  type User {
+    id: Int!
+    full_name: String
+    email: String
+    bio: String
+    phone_number: String
+    profile_image: String
+    created_at: String!
+    briefs: [Brief]
+  }
+
   type Asset {
     id: Int!
     media_id: Int!
@@ -10,6 +21,7 @@ export const typeDefs = `#graphql
     thumbnail: Media
     comments: [Comment]
     tags: [Tag]
+    briefs: [Brief]
   }
 
   type AssetComment {
@@ -51,6 +63,8 @@ export const typeDefs = `#graphql
     assets: [Asset]
     comments: [Comment]
     tags: [Tag]
+    users: [User]
+    related_briefs: [Brief]
   }
 
   type BriefAsset {
@@ -85,19 +99,26 @@ export const typeDefs = `#graphql
     text: String
     user_id: Int
     created_at: String!
+    user: User
+    assets: [Asset]
+    briefs: [Brief]
   }
 
   type Tag {
     id: Int!
     name: String
     created_at: String
+    assets: [Asset]
+    briefs: [Brief]
   }
 
   type Media {
     id: Int!
     url: String
-    type: String
+    file_type: String
     created_at: String
+    assets: [Asset]
+    thumbnailFor: [Asset]
   }
 
   type Product {
@@ -122,6 +143,8 @@ export const typeDefs = `#graphql
     name: String
     description: String
     thumbnail_media_id: Int
+    tagIds: [Int]
+    relatedBriefIds: [Int]
   }
 
   input AssetUpdateInput {
@@ -129,6 +152,9 @@ export const typeDefs = `#graphql
     name: String
     description: String
     thumbnail_media_id: Int
+    tagIds: [Int]
+    commentIds: [Int]
+    relatedBriefIds: [Int]
   }
 
   input AssetCommentInput {
@@ -150,6 +176,10 @@ export const typeDefs = `#graphql
     product_id: Int
     objective_id: Int
     status: BriefStatus
+    userIds: [Int]
+    tagIds: [Int]
+    assetIds: [Int]
+    relatedBriefIds: [Int]
   }
 
   input BriefAssetInput {
@@ -177,8 +207,7 @@ export const typeDefs = `#graphql
   }
 
   input MediaInput {
-    url: String
-    type: String
+    file: Upload!
   }
 
   input ProductInput {
@@ -191,12 +220,155 @@ export const typeDefs = `#graphql
     description: String
   }
 
+  input SafeBriefUpdateInput {
+    title: String
+    description: String
+    go_live_on: String
+    about_target_audience: String
+    about_hook: String
+    product_id: Int
+    objective_id: Int
+    status: BriefStatus
+  }
+
+  input UserInput {
+    full_name: String
+    email: String
+    bio: String
+    phone_number: String
+    profile_image: String
+  }
+
+  # Sorting and pagination types
+  enum SortOrder {
+    ASC
+    DESC
+  }
+
+  enum UserSortField {
+    FULL_NAME
+    EMAIL
+    CREATED_AT
+  }
+
+  enum AssetSortField {
+    NAME
+    CREATED_AT
+    DESCRIPTION
+  }
+
+  enum BriefSortField {
+    TITLE
+    CREATED_AT
+    GO_LIVE_ON
+    STATUS
+  }
+
+  input UserSort {
+    field: UserSortField!
+    order: SortOrder!
+  }
+
+  input AssetSort {
+    field: AssetSortField!
+    order: SortOrder!
+  }
+
+  input BriefSort {
+    field: BriefSortField!
+    order: SortOrder!
+  }
+
+  input PaginationInput {
+    page: Int! = 1
+    pageSize: Int! = 10
+  }
+
+  type PaginatedUsers {
+    users: [User]!
+    totalCount: Int!
+    hasNextPage: Boolean!
+    hasPreviousPage: Boolean!
+    currentPage: Int!
+    totalPages: Int!
+  }
+
+  type PaginatedAssets {
+    assets: [Asset]!
+    totalCount: Int!
+    hasNextPage: Boolean!
+    hasPreviousPage: Boolean!
+    currentPage: Int!
+    totalPages: Int!
+  }
+
+  type PaginatedBriefs {
+    briefs: [Brief]!
+    totalCount: Int!
+    hasNextPage: Boolean!
+    hasPreviousPage: Boolean!
+    currentPage: Int!
+    totalPages: Int!
+  }
+
+  input DateRangeInput {
+    startDate: String
+    endDate: String
+  }
+
+  input UserFilters {
+    fullName: String
+    email: String
+    search: String
+    briefIds: [Int]
+    createdAt: DateRangeInput
+  }
+
+  input AssetFilters {
+    name: String
+    description: String
+    mediaId: Int
+    thumbnailMediaId: Int
+    tagIds: [Int]
+    briefIds: [Int]
+    commentIds: [Int]
+    createdAt: DateRangeInput
+    search: String
+  }
+
+  input BriefFilters {
+    userIds: [Int]
+    title: String
+    productId: Int
+    objectiveId: Int
+    tagIds: [Int]
+    assetIds: [Int]
+    status: [BriefStatus]
+    createdAt: DateRangeInput
+    goLiveOn: DateRangeInput
+    search: String
+  }
+
   type Query {
     hello: String
     
+    # User queries
+    getUser(id: Int!): User
+    getUsers(
+      filters: UserFilters
+      sort: [UserSort]
+      pagination: PaginationInput
+    ): PaginatedUsers!
+    getUserBriefs(userId: Int!): [Brief]
+    getBriefUsers(briefId: Int!): [User]
+    
     # Asset queries
     getAsset(id: Int!): Asset
-    getAssets: [Asset]
+    getAssets(
+      filters: AssetFilters
+      sort: [AssetSort]
+      pagination: PaginationInput
+    ): PaginatedAssets!
     
     # AssetComment queries
     getAssetComment(id: Int!): AssetComment
@@ -210,7 +382,11 @@ export const typeDefs = `#graphql
     
     # Brief queries
     getBrief(id: Int!): Brief
-    getBriefs: [Brief]
+    getBriefs(
+      filters: BriefFilters
+      sort: [BriefSort]
+      pagination: PaginationInput
+    ): PaginatedBriefs!
     
     # BriefAsset queries
     getBriefAsset(id: Int!): BriefAsset
@@ -266,6 +442,7 @@ export const typeDefs = `#graphql
     createBrief(input: BriefInput!): Brief
     updateBrief(id: Int!, input: BriefInput!): Brief
     deleteBrief(id: Int!): Boolean
+    safeUpdateBrief(id: Int!, input: SafeBriefUpdateInput!): Brief
     
     # BriefAsset mutations
     createBriefAsset(input: BriefAssetInput!): BriefAsset
@@ -293,6 +470,7 @@ export const typeDefs = `#graphql
     createMedia(input: MediaInput!): Media
     updateMedia(id: Int!, input: MediaInput!): Media
     deleteMedia(id: Int!): Boolean
+    uploadMedia(file: Upload!): MediaUploadResponse!
     
     # Product mutations
     createProduct(input: ProductInput!): Product
@@ -303,5 +481,25 @@ export const typeDefs = `#graphql
     createObjective(input: ObjectiveInput!): Objective
     updateObjective(id: Int!, input: ObjectiveInput!): Objective
     deleteObjective(id: Int!): Boolean
+
+    # User mutations
+    createUser(input: UserInput!): User
+    updateUser(id: Int!, input: UserInput!): User
+    deleteUser(id: Int!): Boolean
+    addUserToBrief(userId: Int!, briefId: Int!): Boolean
+    removeUserFromBrief(userId: Int!, briefId: Int!): Boolean
+  }
+
+  # Add Upload scalar for file handling
+  scalar Upload
+
+  type MediaUploadResponse {
+    id: Int!
+    url: String!
+    name: String!
+    file_type: String!
+    s3_key: String!
+    size: Int!
+    created_at: String!
   }
 `; 

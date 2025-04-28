@@ -6,7 +6,7 @@ export const otherQueries = {
   // Brief relationship queries
   getBriefAsset: async (_: any, { id }: { id: number }) => {
     const { data, error } = await supabase
-      .from('brief_assests') // Note the typo in table name
+      .from('brief_assets') // Note the typo in table name
       .select('*')
       .eq('id', id)
       .single();
@@ -16,7 +16,7 @@ export const otherQueries = {
   },
   getBriefAssets: async () => {
     const { data, error } = await supabase
-      .from('brief_assests')
+      .from('brief_assets')
       .select('*');
     
     if (error) throw new Error(error.message);
@@ -24,7 +24,7 @@ export const otherQueries = {
   },
   getBriefAssetsByBriefId: async (_: any, { briefId }: { briefId: number }) => {
     const { data, error } = await supabase
-      .from('brief_assests')
+      .from('brief_assets')
       .select('*')
       .eq('brief_id', briefId);
     

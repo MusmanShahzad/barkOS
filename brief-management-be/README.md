@@ -123,7 +123,7 @@ The API is designed to work with a PostgreSQL database with the following tables
 - asset_comments
 - asset_tags
 - briefs
-- brief_assests (note: contains a typo in the name)
+- brief_assets (note: contains a typo in the name)
 - brief_comments
 - brief_tags
 - comments

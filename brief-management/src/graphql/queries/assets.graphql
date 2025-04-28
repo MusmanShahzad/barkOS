@@ -1,0 +1,88 @@
+query GetAssets($filters: AssetFilters, $sort: [AssetSort!], $pagination: PaginationInput) {
+  getAssets(filters: $filters, sort: $sort, pagination: $pagination) {
+    assets {
+      id
+      name
+      description
+      media {
+        id
+        url
+        file_type
+      }
+      thumbnail {
+        id
+        url
+        file_type
+      }
+      tags {
+        id
+        name
+      }
+      comments {
+        id
+        text
+        user {
+          id
+          full_name
+          profile_image
+        }
+        created_at
+      }
+      created_at
+    }
+    totalCount
+    hasNextPage
+    hasPreviousPage
+    currentPage
+    totalPages
+  }
+}
+
+query GetAsset($getAssetId: Int!) {
+  getAsset(id: $getAssetId) {
+    id
+    media_id
+    name
+    description
+    thumbnail_media_id
+    created_at
+    media {
+      id
+      url
+      file_type
+      created_at
+    }
+    thumbnail {
+      id
+      url
+      file_type
+      created_at
+    }
+    comments {
+      id
+      text
+      user {
+        id
+        full_name
+        email
+        bio
+        phone_number
+        profile_image
+        created_at
+      }
+    }
+    tags {
+      id
+      name
+    }
+    briefs {
+      id
+      about_hook
+      about_target_audience
+      created_at
+      description
+      go_live_on
+      status 
+    }
+  }
+}

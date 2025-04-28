@@ -1,9 +1,19 @@
+export interface User {
+  id: number;
+  full_name?: string;
+  email?: string;
+  bio?: string;
+  phone_number?: string;
+  profile_image?: string;
+  created_at: string;
+}
+
 export interface Asset {
   id: number;
   media_id: number;
-  name: string | null;
-  description: string | null;
-  thumbnail_media_id: number | null;
+  name?: string;
+  description?: string;
+  thumbnail_media_id?: number;
   created_at: string;
 }
 
@@ -30,16 +40,15 @@ export enum BriefStatus {
 
 export interface Brief {
   id: number;
+  title?: string;
+  description?: string;
   created_at: string;
-  // Adding common brief fields since they're referenced in relationships
-  title?: string | null;
-  description?: string | null;
-  go_live_on?: string | null;
-  about_target_audience?: string | null;
-  about_hook?: string | null;
-  product_id?: number | null;
-  objective_id?: number | null;
-  status?: BriefStatus | null;
+  go_live_on?: string;
+  about_target_audience?: string;
+  about_hook?: string;
+  status?: BriefStatus;
+  product_id?: number;
+  objective_id?: number;
 }
 
 export interface BriefAsset {
@@ -65,37 +74,38 @@ export interface BriefTag {
 
 export interface Comment {
   id: number;
-  // Adding common comment fields since they're referenced
-  text?: string | null;
-  user_id?: number | null;
+  text?: string;
+  user_id?: number;
   created_at: string;
 }
 
 export interface Tag {
   id: number;
-  // Adding common tag fields
-  name?: string | null;
+  name?: string;
   created_at?: string;
 }
 
 export interface Media {
   id: number;
-  // Adding common media fields
-  url?: string | null;
-  type?: string | null;
+  url?: string;
+  type?: string;
   created_at?: string;
 }
 
 export interface Product {
   id: number;
+  name?: string;
+  description?: string;
   created_at: string;
-  name: string | null;
-  description: string | null;
 }
 
 export interface Objective {
   id: number;
-  name: string | null;
-  description: string | null;
+  name?: string;
+  description?: string;
   created_at: string;
+}
+
+export interface Context {
+  token?: string;
 } 

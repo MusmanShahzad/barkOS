@@ -8,6 +8,7 @@ import { BriefCommentResolvers } from './types/briefCommentResolvers';
 import { BriefTagResolvers } from './types/briefTagResolvers';
 import { ProductResolvers } from './types/productResolvers';
 import { ObjectiveResolvers } from './types/objectiveResolvers';
+import { UserResolvers } from './types/userResolvers';
 
 // Import query resolvers
 import { assetQueries } from './queries/assetQueries';
@@ -17,6 +18,7 @@ import { briefQueries } from './queries/briefQueries';
 import { otherQueries } from './queries/otherQueries';
 import { productQueries } from './queries/productQueries';
 import { objectiveQueries } from './queries/objectiveQueries';
+import { userQueries } from './queries/userQueries';
 
 // Import mutation resolvers
 import { assetMutations } from './mutations/assetMutations';
@@ -26,6 +28,14 @@ import { briefRelationMutations } from './mutations/briefRelationMutations';
 import { otherMutations } from './mutations/otherMutations';
 import { productMutations } from './mutations/productMutations';
 import { objectiveMutations } from './mutations/objectiveMutations';
+import { userMutations } from './mutations/userMutations';
+
+// Debug log imports
+console.log('Imported resolvers:', {
+  productQueries,
+  productMutations,
+  ProductResolvers
+});
 
 // Combine all resolvers
 export const resolvers = {
@@ -39,6 +49,7 @@ export const resolvers = {
   BriefTag: BriefTagResolvers,
   Product: ProductResolvers,
   Objective: ObjectiveResolvers,
+  User: UserResolvers,
   
   // Query resolvers
   Query: {
@@ -49,6 +60,7 @@ export const resolvers = {
     ...otherQueries,
     ...productQueries,
     ...objectiveQueries,
+    ...userQueries,
   },
   
   // Mutation resolvers
@@ -60,5 +72,6 @@ export const resolvers = {
     ...otherMutations,
     ...productMutations,
     ...objectiveMutations,
+    ...userMutations,
   },
 }; 

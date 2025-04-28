@@ -6,7 +6,15 @@ import { GraphQLError } from 'graphql';
  * @param operation The operation being performed (e.g., "creating tag")
  */
 export const handleError = (error: any, operation: string): never => {
-  console.error(`Error ${operation}:`, error);
+  // Log detailed error information
+  console.error('Error Details:');
+  console.error(`Operation: ${operation}`);
+  console.error('Error object:', error);
+  console.error('Stack trace:', error.stack);
+  
+  if (error.code) {
+    console.error('Error code:', error.code);
+  }
 
   // Specific error handling for RLS policy violations
   if (error.message && error.message.includes('row-level security policy')) {
@@ -16,6 +24,7 @@ export const handleError = (error: any, operation: string): never => {
         extensions: {
           code: 'FORBIDDEN',
           originalError: error.message,
+          details: error.details,
         },
       }
     );
@@ -29,6 +38,7 @@ export const handleError = (error: any, operation: string): never => {
         extensions: {
           code: 'BAD_USER_INPUT',
           originalError: error.message,
+          details: error.details,
         },
       }
     );
@@ -42,6 +52,35 @@ export const handleError = (error: any, operation: string): never => {
         extensions: {
           code: 'BAD_USER_INPUT',
           originalError: error.message,
+          details: error.details,
+        },
+      }
+    );
+  }
+
+  // Data type validation errors
+  if (error.message && error.message.includes('invalid input syntax')) {
+    throw new GraphQLError(
+      `Invalid data format: Please check the input values.`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT',
+          originalError: error.message,
+          details: error.details,
+        },
+      }
+    );
+  }
+
+  // Not found errors
+  if (error.message && error.message.includes('not found')) {
+    throw new GraphQLError(
+      `Resource not found: The requested data does not exist.`,
+      {
+        extensions: {
+          code: 'NOT_FOUND',
+          originalError: error.message,
+          details: error.details,
         },
       }
     );
@@ -54,6 +93,8 @@ export const handleError = (error: any, operation: string): never => {
       extensions: {
         code: 'INTERNAL_SERVER_ERROR',
         originalError: error.message,
+        details: error.details,
+        stack: error.stack,
       },
     }
   );

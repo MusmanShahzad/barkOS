@@ -160,10 +160,10 @@ export default function EnhancedCommentSection({ comments, onAddComment }) {
       </form>
 
       <div className="space-y-4">
-        {comments.length === 0 ? (
+        {comments?.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">No comments yet. Be the first to comment!</div>
         ) : (
-          comments.map((comment) => (
+          comments?.map((comment) => (
             <div key={comment.id} className="flex gap-4">
               <Avatar className="h-10 w-10">
                 <AvatarImage src={comment.user.avatar || "/placeholder.svg"} alt={comment.user.name} />

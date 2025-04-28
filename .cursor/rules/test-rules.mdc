@@ -1,0 +1,27 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Structure
+
+- @brief-management folder is the Frontend (FE) codebase
+  - Built with Next.js, React, and Tailwind CSS
+  - Contains UI components, pages, and client-side logic
+  - using codegen to auto genrate types and use there hooks every where
+  - Components follow the shadcn/ui pattern and are generated using the CLI
+  - All UI components should maintain consistent styling with the design system
+  - Custom components should be created in the components directory
+  - Schema-first approach with type definitions in .graphql files
+  - Use codegen to generate TypeScript types from the GraphQL schema
+  - Run `npm run codegen` to generate types after schema changes
+  - All GraphQL operations should be properly typed
+
+- @brief-management-be folder is the Backend (BE) codebase
+  - Node.js backend with supabase
+  - Contains API endpoints, business logic, and database interactions
+  - Uses supabase offical library
+  - for storage using supabase
+  - for understanging of database structure [postgres.sql](mdc:brief-management-be/postgres.sql)
+  - graphql schemas are in [schema.ts](mdc:brief-management-be/src/schema.ts)
+  - Resolvers implemented in TypeScript

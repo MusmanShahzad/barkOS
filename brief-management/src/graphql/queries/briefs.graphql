@@ -1,0 +1,148 @@
+query GetBriefs($pagination: PaginationInput!, $filters: BriefFilters, $sort: [BriefSort]) {
+  getBriefs(pagination: $pagination, filters: $filters, sort: $sort) {
+    briefs {
+      id
+      title
+      description
+      status
+      created_at
+      go_live_on
+      about_target_audience
+      about_hook
+      product {
+        id
+        name
+        description
+      }
+      objective {
+        id
+        name
+        description
+      }
+      assets {
+        id
+        name
+        description
+        media_id
+        thumbnail_media_id
+        created_at
+        media {
+          id
+          url
+          file_type
+        }
+        thumbnail {
+          id
+          url
+        }
+        tags {
+          id
+          name
+        }
+      }
+      comments {
+        id
+        text
+        user_id
+        created_at
+        user {
+          id
+          full_name
+          email
+          profile_image
+        }
+      }
+      tags {
+        id
+        name
+      }
+      users {
+        id
+        full_name
+        email
+        profile_image
+      }
+      related_briefs {
+        id
+        title
+        status
+      }
+    }
+    totalCount
+    hasNextPage
+    hasPreviousPage
+    currentPage
+    totalPages
+  }
+}
+
+query GetBrief($id: Int!) {
+  getBrief(id: $id) {
+    id
+    title
+    description
+    status
+    created_at
+    go_live_on
+    about_target_audience
+    about_hook
+    product {
+      id
+      name
+      description
+    }
+    objective {
+      id
+      name
+      description
+    }
+    assets {
+      id
+      name
+      description
+      media_id
+      thumbnail_media_id
+      created_at
+      media {
+        id
+        url
+        file_type
+      }
+      thumbnail {
+        id
+        url
+      }
+      tags {
+        id
+        name
+      }
+    }
+    comments {
+      id
+      text
+      user_id
+      created_at
+      user {
+        id
+        full_name
+        email
+        profile_image
+      }
+    }
+    tags {
+      id
+      name
+    }
+    users {
+      id
+      full_name
+      email
+      profile_image
+    }
+    related_briefs {
+      id
+      title
+      status
+    }
+  }
+} 

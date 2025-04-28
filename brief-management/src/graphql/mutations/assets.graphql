@@ -1,0 +1,39 @@
+mutation UpdateAsset($id: Int!, $input: AssetUpdateInput!) {
+  updateAsset(id: $id, input: $input) {
+    id
+    name
+    description
+    media_id
+    thumbnail_media_id
+    created_at
+    media {
+      id
+      url
+      file_type
+    }
+    thumbnail {
+      id
+      url
+      file_type
+    }
+    tags {
+      id
+      name
+    }
+    comments {
+      id
+      text
+      user {
+        id
+        full_name
+        profile_image
+      }
+      created_at
+    }
+    created_at
+  }
+}
+
+mutation DeleteAsset($id: Int!) {
+  deleteAsset(id: $id)
+} 

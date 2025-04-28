@@ -5,98 +5,165 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileIcon, Grid, List, Plus, Search, X, Upload, FileImage, Loader2, Play } from "lucide-react"
-import { mockAssets } from "@/lib/mock-data"
 import { formatFileSize } from "@/lib/utils"
 import Image from "next/image"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { VirtualList } from "@/components/virtual-list"
 import AssetPreviewModal from "@/components/asset-preview-modal"
+import { useGetAssetsQuery, Asset, Maybe } from "@/src/graphql/generated/graphql"
 
-export function QuickAssetSelector({ selectedAssets = [], onSelect, onAddNew }) {
+// Define interfaces for component props and assets
+export interface AssetDisplayType {
+  id: number;
+  name: string;
+  description?: string;
+  type: string;
+  size: number;
+  url: string;
+  thumbnail?: string | null;
+  tags?: string[];
+}
+
+interface QuickAssetSelectorProps {
+  selectedAssets: AssetDisplayType[];
+  onSelect: (assets: AssetDisplayType[]) => void;
+  onAddNew: () => void;
+}
+
+export function QuickAssetSelector({
+  selectedAssets = [],
+  onSelect,
+  onAddNew
+}: QuickAssetSelectorProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [viewMode, setViewMode] = useState("grid")
-  const [localSelectedAssets, setLocalSelectedAssets] = useState(selectedAssets)
+  const [localSelectedAssets, setLocalSelectedAssets] = useState<AssetDisplayType[]>(selectedAssets)
   const [isOpen, setIsOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
   const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
-  const [assets, setAssets] = useState([])
-  const [previewAsset, setPreviewAsset] = useState(null)
+  const [previewAsset, setPreviewAsset] = useState<number | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const PAGE_SIZE = 10
+
+  // Query assets using GraphQL
+  const { data, loading, fetchMore } = useGetAssetsQuery({
+    variables: {
+      pagination: {
+        page,
+        pageSize: PAGE_SIZE
+      },
+      filters: {
+        search: searchQuery || undefined
+      },
+      sort: [
+        {
+          field: "CREATED_AT",
+          order: "DESC"
+        }
+      ]
+    },
+    skip: !isOpen // Only fetch when popover is open
+  })
 
   // Update local state when props change
   useEffect(() => {
     setLocalSelectedAssets(selectedAssets)
   }, [selectedAssets])
 
-  // Simulate loading assets with pagination
-  useEffect(() => {
-    if (isOpen && page === 1) {
-      setIsLoading(true)
-      setAssets([])
+  // Convert API assets to display format
+  const mapAssetsFromApi = (assets: Maybe<Asset>[]): AssetDisplayType[] => {
+    return assets
+      .filter((asset): asset is Asset => asset !== null)
+      .map((asset): AssetDisplayType => {
+        return {
+          id: Number(asset.id),
+          name: asset.name || `Asset ${asset.id}`,
+          description: asset.description || undefined,
+          // Determine type from media file_type
+          type: asset.media?.file_type?.split('/')[0] || "file",
+          // Use placeholder size if not available
+          size: 0,
+          // Get URL from media
+          url: asset.media?.url || "/placeholder.svg",
+          // Get thumbnail URL if available
+          thumbnail: asset.thumbnail?.url || null,
+          // Get tags
+          tags: asset.tags?.filter(Boolean).map(tag => tag?.name || '') || []
+        }
+      })
+  }
 
-      // Simulate API call with delay
-      setTimeout(() => {
-        const filtered = mockAssets.filter(
-          (asset) =>
-            asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            asset.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            asset.tags?.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase())),
-        )
-
-        setAssets(filtered.slice(0, 10))
-        setHasMore(filtered.length > 10)
-        setIsLoading(false)
-      }, 800)
-    }
-  }, [isOpen, searchQuery, page])
+  // Available assets data
+  const availableAssets = mapAssetsFromApi(data?.getAssets.assets || [])
+  const hasMoreAssets = data?.getAssets.hasNextPage || false
+  const totalAssets = data?.getAssets.totalCount || 0
 
   // Load more assets
   const loadMoreAssets = () => {
-    if (isLoading || !hasMore) return
+    if (loading || !hasMoreAssets) return
 
-    setIsLoading(true)
-
-    // Simulate API call with delay
-    setTimeout(() => {
-      const filtered = mockAssets.filter(
-        (asset) =>
-          asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          asset.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          asset.tags?.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase())),
-      )
-
-      const newAssets = filtered.slice(assets.length, assets.length + 10)
-      setAssets([...assets, ...newAssets])
-      setHasMore(assets.length + newAssets.length < filtered.length)
-      setIsLoading(false)
-      setPage(page + 1)
-    }, 800)
+    const nextPage = page + 1
+    fetchMore({
+      variables: {
+        pagination: {
+          page: nextPage,
+          pageSize: PAGE_SIZE
+        }
+      },
+      updateQuery: (prev, { fetchMoreResult }) => {
+        if (!fetchMoreResult) return prev
+        return {
+          ...fetchMoreResult,
+          getAssets: {
+            ...fetchMoreResult.getAssets,
+            assets: [
+              ...(prev.getAssets.assets || []),
+              ...(fetchMoreResult.getAssets.assets || [])
+            ]
+          }
+        }
+      }
+    })
+    setPage(nextPage)
   }
 
-  const toggleAssetSelection = (assetId) => {
-    const newSelection = localSelectedAssets.includes(assetId)
-      ? localSelectedAssets.filter((id) => id !== assetId)
-      : [...localSelectedAssets, assetId]
-
+  // Toggle asset selection
+  const toggleAssetSelection = (assetId: number) => {
+    // Find the asset in available assets
+    const asset = availableAssets.find(a => a.id === assetId)
+    
+    // If asset is not found, do nothing
+    if (!asset) return
+    
+    // Check if asset is already selected
+    const isSelected = localSelectedAssets.some(a => a.id === assetId)
+    
+    // Create new selection array
+    const newSelection = isSelected
+      ? localSelectedAssets.filter(a => a.id !== assetId)
+      : [...localSelectedAssets, asset]
+    
+    // Update local state
     setLocalSelectedAssets(newSelection)
+    
+    // Call onSelect prop with new selection
     onSelect(newSelection)
   }
 
-  const openAssetPreview = (assetId) => {
+  // Open asset preview
+  const openAssetPreview = (assetId: number) => {
     setPreviewAsset(assetId)
     setIsPreviewOpen(true)
   }
 
   // Render grid item
-  const renderGridItem = (asset) => (
+  const renderGridItem = (asset: AssetDisplayType) => (
     <Card
       key={asset.id}
       className={`overflow-hidden cursor-pointer hover:bg-muted transition-colors ${
-        localSelectedAssets.includes(asset.id) ? "ring-1 ring-primary" : ""
+        localSelectedAssets.some(a => a.id === asset.id) ? "ring-1 ring-primary" : ""
       }`}
     >
       <div className="aspect-square relative bg-muted" onClick={() => openAssetPreview(asset.id)}>
@@ -128,7 +195,7 @@ export function QuickAssetSelector({ selectedAssets = [], onSelect, onAddNew }) 
             toggleAssetSelection(asset.id)
           }}
         >
-          <Checkbox checked={localSelectedAssets.includes(asset.id)} className="h-4 w-4 bg-background/80" />
+          <Checkbox checked={localSelectedAssets.some(a => a.id === asset.id)} className="h-4 w-4 bg-background/80" />
         </div>
       </div>
       <CardContent className="p-2">
@@ -144,11 +211,11 @@ export function QuickAssetSelector({ selectedAssets = [], onSelect, onAddNew }) 
   )
 
   // Render list item
-  const renderListItem = (asset) => (
+  const renderListItem = (asset: AssetDisplayType) => (
     <div
       key={asset.id}
       className={`flex items-center p-2 hover:bg-muted cursor-pointer ${
-        localSelectedAssets.includes(asset.id) ? "bg-muted/70" : ""
+        localSelectedAssets.some(a => a.id === asset.id) ? "bg-muted/70" : ""
       }`}
     >
       <div
@@ -158,7 +225,7 @@ export function QuickAssetSelector({ selectedAssets = [], onSelect, onAddNew }) 
           toggleAssetSelection(asset.id)
         }}
       >
-        <Checkbox checked={localSelectedAssets.includes(asset.id)} className="mr-2" />
+        <Checkbox checked={localSelectedAssets.some(a => a.id === asset.id)} className="mr-2" />
       </div>
       <div className="flex-1 flex items-center min-w-0" onClick={() => openAssetPreview(asset.id)}>
         <div className="h-8 w-8 mr-2 rounded overflow-hidden bg-muted flex-shrink-0">
@@ -248,31 +315,33 @@ export function QuickAssetSelector({ selectedAssets = [], onSelect, onAddNew }) 
                 </Button>
               </div>
               <div className="flex items-center justify-between">
-                <TabsList className="h-8">
-                  <TabsTrigger value="grid" className="px-2 h-7" onClick={() => setViewMode("grid")}>
-                    <Grid className="h-4 w-4" />
-                  </TabsTrigger>
-                  <TabsTrigger value="list" className="px-2 h-7" onClick={() => setViewMode("list")}>
-                    <List className="h-4 w-4" />
-                  </TabsTrigger>
-                </TabsList>
+                <Tabs defaultValue="grid">
+                  <TabsList className="h-8">
+                    <TabsTrigger value="grid" className="px-2 h-7" onClick={() => setViewMode("grid")}>
+                      <Grid className="h-4 w-4" />
+                    </TabsTrigger>
+                    <TabsTrigger value="list" className="px-2 h-7" onClick={() => setViewMode("list")}>
+                      <List className="h-4 w-4" />
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
                 <div className="text-xs text-muted-foreground">
-                  {assets.length} asset{assets.length !== 1 ? "s" : ""}
+                  {totalAssets} asset{totalAssets !== 1 ? "s" : ""}
                 </div>
               </div>
             </div>
 
             {viewMode === "grid" ? (
               <div className="p-2">
-                {isLoading && assets.length === 0 ? (
+                {loading && availableAssets.length === 0 ? (
                   <div className="flex items-center justify-center p-4">
                     <Loader2 className="h-6 w-6 animate-spin mr-2" />
                     <span>Loading assets...</span>
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-2 gap-2">{assets.map((asset) => renderGridItem(asset))}</div>
-                    {isLoading && (
+                    <div className="grid grid-cols-2 gap-2">{availableAssets.map((asset) => renderGridItem(asset))}</div>
+                    {loading && (
                       <div className="flex items-center justify-center p-2 mt-2">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         <span className="text-xs">Loading more...</span>
@@ -283,15 +352,15 @@ export function QuickAssetSelector({ selectedAssets = [], onSelect, onAddNew }) 
               </div>
             ) : (
               <VirtualList
-                items={assets}
+                items={availableAssets}
                 renderItem={renderListItem}
                 itemHeight={48}
                 height={300}
-                hasMore={hasMore}
+                hasMore={hasMoreAssets}
                 loadMore={loadMoreAssets}
-                isLoading={isLoading}
+                isLoading={loading}
                 emptyMessage={
-                  isLoading ? (
+                  loading ? (
                     <div className="flex items-center justify-center">
                       <Loader2 className="h-6 w-6 animate-spin mr-2" />
                       <span>Loading assets...</span>
@@ -312,46 +381,42 @@ export function QuickAssetSelector({ selectedAssets = [], onSelect, onAddNew }) 
       {/* Selected assets preview */}
       {localSelectedAssets.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
-          {localSelectedAssets.map((assetId) => {
-            const asset = mockAssets.find((a) => a.id === assetId)
-            if (!asset) return null
-            return (
-              <Badge key={assetId} variant="secondary" className="flex items-center gap-1 pr-1">
-                {asset.type === "image" ? (
-                  <div className="w-3 h-3 rounded-full overflow-hidden mr-1">
-                    <Image
-                      src={asset.url || "/placeholder.svg"}
-                      alt={asset.name}
-                      width={12}
-                      height={12}
-                      className="object-cover"
-                    />
-                  </div>
-                ) : asset.type === "video" ? (
-                  <div className="w-3 h-3 rounded-full overflow-hidden mr-1 relative">
-                    <Image
-                      src={asset.thumbnail || "/placeholder.svg?query=video thumbnail"}
-                      alt={asset.name}
-                      width={12}
-                      height={12}
-                      className="object-cover"
-                    />
-                  </div>
-                ) : (
-                  <FileIcon className="w-3 h-3 mr-1" />
-                )}
-                <span className="text-xs max-w-[100px] truncate">{asset.name}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-4 w-4 p-0 ml-1 rounded-full"
-                  onClick={() => toggleAssetSelection(assetId)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </Badge>
-            )
-          })}
+          {localSelectedAssets.map((asset) => (
+            <Badge key={asset.id} variant="secondary" className="flex items-center gap-1 pr-1">
+              {asset.type === "image" ? (
+                <div className="w-3 h-3 rounded-full overflow-hidden mr-1">
+                  <Image
+                    src={asset.url || "/placeholder.svg"}
+                    alt={asset.name}
+                    width={12}
+                    height={12}
+                    className="object-cover"
+                  />
+                </div>
+              ) : asset.type === "video" ? (
+                <div className="w-3 h-3 rounded-full overflow-hidden mr-1 relative">
+                  <Image
+                    src={asset.thumbnail || "/placeholder.svg?query=video thumbnail"}
+                    alt={asset.name}
+                    width={12}
+                    height={12}
+                    className="object-cover"
+                  />
+                </div>
+              ) : (
+                <FileIcon className="w-3 h-3 mr-1" />
+              )}
+              <span className="text-xs max-w-[100px] truncate">{asset.name}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-4 w-4 p-0 ml-1 rounded-full"
+                onClick={() => toggleAssetSelection(asset.id)}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </Badge>
+          ))}
         </div>
       )}
 

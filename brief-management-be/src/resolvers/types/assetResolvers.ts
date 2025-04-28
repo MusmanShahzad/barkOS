@@ -1,7 +1,30 @@
-import { Asset } from '../../types';
 import { supabase } from '../../supabase';
+import { Asset } from '../../types';
 
 export const AssetResolvers = {
+  briefs: async (parent: Asset) => {
+    const { data, error } = await supabase
+      .from('brief_assets')
+      .select('brief_id')
+      .eq('asset_id', parent.id);
+    
+    if (error) throw new Error(error.message);
+    
+    if (!data || data.length === 0) return [];
+    
+    const briefIds = data.map(ba => ba.brief_id).filter(Boolean);
+    
+    if (briefIds.length === 0) return [];
+    
+    const { data: briefs, error: briefsError } = await supabase
+      .from('briefs')
+      .select('*')
+      .in('id', briefIds);
+    
+    if (briefsError) throw new Error(briefsError.message);
+    return briefs || [];
+  },
+
   media: async (parent: Asset) => {
     if (!parent.media_id) return null;
     const { data, error } = await supabase
@@ -13,6 +36,7 @@ export const AssetResolvers = {
     if (error) throw new Error(error.message);
     return data;
   },
+
   thumbnail: async (parent: Asset) => {
     if (!parent.thumbnail_media_id) return null;
     const { data, error } = await supabase
@@ -24,6 +48,7 @@ export const AssetResolvers = {
     if (error) throw new Error(error.message);
     return data;
   },
+
   comments: async (parent: Asset) => {
     const { data, error } = await supabase
       .from('asset_comments')
@@ -32,10 +57,8 @@ export const AssetResolvers = {
     
     if (error) throw new Error(error.message);
     
-    // If no comments, return empty array
     if (!data || data.length === 0) return [];
     
-    // Get the actual comments
     const commentIds = data.map(ac => ac.comment_id).filter(Boolean);
     
     if (commentIds.length === 0) return [];
@@ -48,6 +71,7 @@ export const AssetResolvers = {
     if (commentsError) throw new Error(commentsError.message);
     return comments || [];
   },
+
   tags: async (parent: Asset) => {
     const { data, error } = await supabase
       .from('asset_tags')
@@ -56,10 +80,8 @@ export const AssetResolvers = {
     
     if (error) throw new Error(error.message);
     
-    // If no tags, return empty array
     if (!data || data.length === 0) return [];
     
-    // Get the actual tags
     const tagIds = data.map(at => at.tag_id).filter(Boolean);
     
     if (tagIds.length === 0) return [];
@@ -71,5 +93,5 @@ export const AssetResolvers = {
     
     if (tagsError) throw new Error(tagsError.message);
     return tags || [];
-  },
+  }
 }; 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -30,16 +30,38 @@ import {
 } from "lucide-react"
 import { formatFileSize, formatDate } from "@/lib/utils"
 import Image from "next/image"
-import { mockAssets, mockBriefs } from "@/lib/mock-data"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 import EnhancedCommentSection from "@/components/enhanced-comment-section"
+import { useGetAssetQuery, GetAssetQueryResult, BriefStatus } from "@/src/graphql/generated/graphql"
+import { toast } from "sonner"
 
-export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) {
-  const [asset, setAsset] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
+export interface AssetPreviewModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  assetId: number | null;
+  onEdit?: (asset: any) => void;
+}
+
+// Define a simpler Brief type for our component based on the GetBriefsQueryResult
+type BriefInfo = {
+  id: number;
+  title?: string | null;
+  status?: BriefStatus | null;
+}
+
+// Get the briefs with titles from the brief query
+type BriefWithTitle = {
+  readonly __typename: "Brief";
+  readonly id: number;
+  readonly title?: string | null;
+  readonly status?: BriefStatus | null;
+  readonly created_at: string;
+}
+
+export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: AssetPreviewModalProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -50,40 +72,26 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
   const [showInfo, setShowInfo] = useState(true)
   const [activeSection, setActiveSection] = useState("details")
   const [relatedAssets, setRelatedAssets] = useState([])
-  const videoRef = useRef(null)
-  const containerRef = useRef(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  // Simulate loading the asset
+  // Get asset data using Apollo client
+  const { data, loading: isLoading, error } = useGetAssetQuery({
+    variables: { getAssetId: assetId || 0 },
+    skip: !assetId || !isOpen,
+    fetchPolicy: 'network-only'
+  });
+
+  const asset = data?.getAsset;
+  
+  // Reset state when asset changes or modal closes
   useEffect(() => {
-    if (isOpen && assetId) {
-      setIsLoading(true)
-      // Simulate API call
-      setTimeout(() => {
-        const foundAsset = mockAssets.find((a) => a.id === assetId)
-        setAsset(foundAsset || null)
-
-        // Find related assets (assets with the same tags or from the same brief)
-        if (foundAsset) {
-          const related = mockAssets
-            .filter(
-              (a) =>
-                a.id !== foundAsset.id &&
-                (a.tags?.some((tag) => foundAsset.tags?.includes(tag)) ||
-                  a.relatedBriefs?.some((brief) => foundAsset.relatedBriefs?.includes(brief))),
-            )
-            .slice(0, 5)
-          setRelatedAssets(related)
-        }
-
-        setIsLoading(false)
-      }, 800)
-    } else {
-      setAsset(null)
+    if (!isOpen) {
       setZoomLevel(1)
       setRotation(0)
       setIsFullscreen(false)
     }
-  }, [isOpen, assetId])
+  }, [isOpen, assetId]);
 
   // Video player controls
   const togglePlay = () => {
@@ -117,7 +125,7 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
     }
   }
 
-  const handleSeek = (e) => {
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (videoRef.current) {
       const rect = e.currentTarget.getBoundingClientRect()
       const pos = (e.clientX - rect.left) / rect.width
@@ -125,7 +133,7 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
     }
   }
 
-  const formatTime = (seconds) => {
+  const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return `${mins}:${secs < 10 ? "0" : ""}${secs}`
@@ -158,38 +166,126 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
     }
   }
 
-  // Navigation between assets
-  const navigateToAsset = (id) => {
-    // In a real app, you would update the URL or state to show the new asset
-    console.log(`Navigating to asset ${id}`)
+  // Handle download
+  const handleDownload = () => {
+    if (asset?.media?.url) {
+      // Create a temporary link and trigger download
+      const link = document.createElement('a');
+      link.href = asset.media.url;
+      link.download = asset.name || 'download';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      toast.error("Download URL not available");
+    }
   }
 
-  // Find the next and previous assets
-  const getAdjacentAssets = () => {
-    if (!asset) return { prev: null, next: null }
-
-    const assetIndex = mockAssets.findIndex((a) => a.id === asset.id)
-    if (assetIndex === -1) return { prev: null, next: null }
-
-    const prev = assetIndex > 0 ? mockAssets[assetIndex - 1] : null
-    const next = assetIndex < mockAssets.length - 1 ? mockAssets[assetIndex + 1] : null
-
-    return { prev, next }
+  // Handle edit
+  const handleEdit = () => {
+    if (onEdit && asset) {
+      onEdit({
+        id: asset.id,
+        name: asset.name || '',
+        description: asset.description || '',
+        media_id: asset.media_id,
+        thumbnail_media_id: asset.thumbnail_media_id || null,
+        url: asset.media?.url || '',
+        fileType: asset.media?.file_type || '',
+        tags: asset.tags?.filter(tag => !!tag).map(tag => ({
+          id: tag?.id || 0,
+          name: tag?.name || ''
+        })) || [],
+        created_at: asset.created_at,
+        relatedBriefs: asset.briefs?.filter(brief => !!brief).map(brief => {
+          // Cast to BriefWithTitle to access title safely
+          const briefInfo = brief as unknown as BriefWithTitle;
+          return {
+            id: briefInfo.id || 0,
+            title: briefInfo.title || 'Untitled Brief'
+          };
+        }) || []
+      });
+      onClose();
+    }
   }
-
-  const { prev, next } = getAdjacentAssets()
 
   // Handle adding a comment
-  const handleAddComment = (comment, mentionedUsers = []) => {
+  const handleAddComment = (comment: string, mentionedUsers: any[] = []) => {
     // In a real app, you would update the asset with the new comment
     console.log(`Adding comment: ${comment}`, mentionedUsers)
   }
 
-  if (!isOpen) return null
+  const getFileType = (fileType?: string | null) => {
+    if (!fileType) return "unknown";
+    
+    if (fileType.startsWith("image/")) return "image";
+    if (fileType.startsWith("video/")) return "video";
+    if (fileType === "application/pdf") return "pdf";
+    
+    return "document";
+  }
+
+  const renderPreview = () => {
+    if (!asset?.media?.file_type) return null;
+    
+    const fileType = getFileType(asset.media.file_type);
+    const mediaUrl = asset.media.url || '';
+    
+    if (fileType === "image") {
+      return (
+        <div
+          style={{
+            transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
+            transition: "transform 0.3s ease",
+          }}
+          className="relative max-w-full max-h-full"
+        >
+          <Image
+            src={mediaUrl}
+            alt={asset.name || 'Preview'}
+            width={800}
+            height={600}
+            className="object-contain"
+          />
+        </div>
+      );
+    }
+    
+    if (fileType === "video") {
+      return (
+        <video
+          ref={videoRef}
+          src={mediaUrl}
+          className="max-w-full max-h-full"
+          poster={asset.thumbnail?.url || undefined}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={() => setIsPlaying(false)}
+        />
+      );
+    }
+    
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center p-4">
+        <FileIcon className="h-24 w-24 text-muted-foreground mb-4" />
+        <p className="text-lg font-medium mb-2">{asset.name}</p>
+        <p className="text-sm text-muted-foreground mb-4">{asset.media.file_type}</p>
+        <Button onClick={handleDownload}>
+          <Download className="h-4 w-4 mr-2" />
+          Download
+        </Button>
+      </div>
+    );
+  }
+
+  if (!isOpen) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[90vw] max-h-[90vh] p-0 overflow-hidden flex flex-col">
+        <DialogTitle className="sr-only">{asset?.name || 'Asset Preview'}</DialogTitle>
+        
         {/* Header with title and actions */}
         <div className="flex items-center justify-between p-4 border-b">
           <div className="flex items-center gap-2">
@@ -198,19 +294,19 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
             ) : (
               <>
                 <div className="h-8 w-8 rounded overflow-hidden bg-muted flex-shrink-0">
-                  {asset?.type === "image" ? (
+                  {getFileType(asset?.media?.file_type) === "image" ? (
                     <Image
-                      src={asset.url || "/placeholder.svg"}
-                      alt={asset.name}
+                      src={asset?.media?.url || "/placeholder.svg"}
+                      alt={asset?.name || ""}
                       width={32}
                       height={32}
                       className="object-cover"
                     />
-                  ) : asset?.type === "video" ? (
+                  ) : getFileType(asset?.media?.file_type) === "video" ? (
                     <div className="relative h-full w-full">
                       <Image
-                        src={asset.thumbnail || "/placeholder.svg?query=video thumbnail"}
-                        alt={asset.name}
+                        src={asset?.thumbnail?.url || "/placeholder.svg"}
+                        alt={asset?.name || ""}
                         width={32}
                         height={32}
                         className="object-cover"
@@ -228,8 +324,7 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
                 <div>
                   <h2 className="text-lg font-medium">{asset?.name}</h2>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="outline">{asset?.type}</Badge>
-                    <span>{formatFileSize(asset?.size || 0)}</span>
+                    <Badge variant="outline">{getFileType(asset?.media?.file_type)}</Badge>
                   </div>
                 </div>
               </>
@@ -248,12 +343,12 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
               </Tooltip>
             </TooltipProvider>
 
-            {!isLoading && (
+            {!isLoading && asset?.media?.url && (
               <>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" onClick={() => window.open(asset?.url, "_blank")}>
+                      <Button variant="ghost" size="icon" onClick={handleDownload}>
                         <Download className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
@@ -267,12 +362,7 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => {
-                          onClose()
-                          if (onEdit && asset) {
-                            onEdit(asset)
-                          }
-                        }}
+                        onClick={handleEdit}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
@@ -283,9 +373,16 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
               </>
             )}
 
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={onClose}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Close</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
 
@@ -299,50 +396,13 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
               showInfo ? "border-r" : "",
             )}
           >
-            {/* Navigation buttons */}
-            {!isLoading && prev && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute left-4 top-1/2 -translate-y-1/2 bg-background/80 hover:bg-background z-10"
-                onClick={() => navigateToAsset(prev.id)}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-            )}
-
-            {!isLoading && next && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-4 top-1/2 -translate-y-1/2 bg-background/80 hover:bg-background z-10"
-                onClick={() => navigateToAsset(next.id)}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            )}
-
             {isLoading ? (
               <div className="w-full h-full flex items-center justify-center">
                 <Skeleton className="h-[400px] w-[400px]" />
               </div>
-            ) : asset?.type === "image" ? (
+            ) : asset?.media?.file_type && getFileType(asset.media.file_type) === "image" ? (
               <div className="relative w-full h-full flex items-center justify-center p-4">
-                <div
-                  style={{
-                    transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
-                    transition: "transform 0.3s ease",
-                  }}
-                  className="relative max-w-full max-h-full"
-                >
-                  <Image
-                    src={asset.url || "/placeholder.svg"}
-                    alt={asset.name}
-                    width={800}
-                    height={600}
-                    className="object-contain"
-                  />
-                </div>
+                {renderPreview()}
 
                 {/* Image controls */}
                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-background/80 p-2 rounded-full">
@@ -363,17 +423,9 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
                   </Button>
                 </div>
               </div>
-            ) : asset?.type === "video" ? (
+            ) : asset?.media?.file_type && getFileType(asset.media.file_type) === "video" ? (
               <div className="relative w-full h-full flex items-center justify-center bg-black">
-                <video
-                  ref={videoRef}
-                  src={asset.url}
-                  className="max-w-full max-h-full"
-                  poster={asset.thumbnail || ""}
-                  onTimeUpdate={handleTimeUpdate}
-                  onLoadedMetadata={handleLoadedMetadata}
-                  onEnded={() => setIsPlaying(false)}
-                />
+                {renderPreview()}
 
                 {/* Video controls */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
@@ -431,15 +483,7 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
                 )}
               </div>
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center p-4">
-                <FileIcon className="h-24 w-24 text-muted-foreground mb-4" />
-                <p className="text-lg font-medium mb-2">{asset?.name}</p>
-                <p className="text-sm text-muted-foreground mb-4">{formatFileSize(asset?.size || 0)}</p>
-                <Button onClick={() => window.open(asset?.url, "_blank")}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
-              </div>
+              renderPreview()
             )}
           </div>
 
@@ -509,11 +553,11 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
                           <ChevronRight className="h-4 w-4 transition-transform ui-open:rotate-90" />
                         </CollapsibleTrigger>
                         <CollapsibleContent className="pt-2 pb-4">
-                          {asset?.tags?.length > 0 ? (
+                          {asset?.tags && asset.tags.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
-                              {asset.tags.map((tag) => (
-                                <Badge key={tag} variant="secondary">
-                                  {tag}
+                              {asset.tags.filter(tag => !!tag).map((tag) => (
+                                <Badge key={tag?.id} variant="secondary">
+                                  {tag?.name}
                                 </Badge>
                               ))}
                             </div>
@@ -536,106 +580,37 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
                           <div className="space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-sm text-muted-foreground">Type</span>
-                              <span className="text-sm font-medium">{asset?.type}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Size</span>
-                              <span className="text-sm font-medium">{formatFileSize(asset?.size || 0)}</span>
+                              <span className="text-sm font-medium">{asset?.media?.file_type || "Unknown"}</span>
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="text-sm text-muted-foreground">Created</span>
-                              <span className="text-sm font-medium">{formatDate(asset?.createdAt)}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Created By</span>
-                              <div className="flex items-center gap-1">
-                                <Avatar className="h-5 w-5">
-                                  <AvatarImage
-                                    src={asset?.createdBy?.avatar || "/placeholder.svg"}
-                                    alt={asset?.createdBy?.name}
-                                  />
-                                  <AvatarFallback>{asset?.createdBy?.name?.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <span className="text-sm font-medium">{asset?.createdBy?.name}</span>
-                              </div>
+                              <span className="text-sm font-medium">{formatDate(asset?.created_at || "")}</span>
                             </div>
                           </div>
                         </CollapsibleContent>
                       </Collapsible>
 
                       {/* Related briefs */}
-                      <Collapsible defaultOpen>
-                        <CollapsibleTrigger className="flex items-center justify-between w-full text-sm font-medium">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4" />
-                            <span>Related Briefs</span>
-                          </div>
-                          <ChevronRight className="h-4 w-4 transition-transform ui-open:rotate-90" />
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="pt-2 pb-4">
-                          {asset?.relatedBriefs?.length > 0 ? (
-                            <div className="space-y-2">
-                              {asset.relatedBriefs.map((briefId) => {
-                                const brief = mockBriefs.find((b) => b.id === briefId)
-                                return brief ? (
-                                  <div
-                                    key={briefId}
-                                    className="flex items-center justify-between p-2 bg-muted rounded-md"
-                                  >
-                                    <span className="text-sm font-medium truncate">{brief.title}</span>
-                                    <Badge variant="outline">{brief.status}</Badge>
-                                  </div>
-                                ) : null
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">No related briefs.</p>
-                          )}
-                        </CollapsibleContent>
-                      </Collapsible>
-
-                      {/* Related assets */}
-                      {relatedAssets.length > 0 && (
+                      {asset?.briefs && asset.briefs.length > 0 && (
                         <Collapsible defaultOpen>
                           <CollapsibleTrigger className="flex items-center justify-between w-full text-sm font-medium">
                             <div className="flex items-center gap-2">
-                              <Link className="h-4 w-4" />
-                              <span>Related Assets</span>
+                              <FileText className="h-4 w-4" />
+                              <span>Related Briefs</span>
                             </div>
                             <ChevronRight className="h-4 w-4 transition-transform ui-open:rotate-90" />
                           </CollapsibleTrigger>
                           <CollapsibleContent className="pt-2 pb-4">
-                            <div className="grid grid-cols-3 gap-2">
-                              {relatedAssets.map((relatedAsset) => (
+                            <div className="space-y-2">
+                              {asset.briefs.filter(brief => !!brief).map((brief) => (
                                 <div
-                                  key={relatedAsset.id}
-                                  className="aspect-square relative bg-muted rounded-md overflow-hidden cursor-pointer"
-                                  onClick={() => navigateToAsset(relatedAsset.id)}
+                                  key={brief?.id}
+                                  className="flex items-center justify-between p-2 bg-muted rounded-md"
                                 >
-                                  {relatedAsset.type === "image" ? (
-                                    <Image
-                                      src={relatedAsset.url || "/placeholder.svg"}
-                                      alt={relatedAsset.name}
-                                      fill
-                                      className="object-cover"
-                                    />
-                                  ) : relatedAsset.type === "video" ? (
-                                    <div className="relative h-full w-full">
-                                      <Image
-                                        src={relatedAsset.thumbnail || "/placeholder.svg?query=video thumbnail"}
-                                        alt={relatedAsset.name}
-                                        fill
-                                        className="object-cover"
-                                      />
-                                      <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                                        <Play className="h-3 w-3 text-white" />
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="h-full w-full flex items-center justify-center">
-                                      <FileIcon className="h-6 w-6 text-muted-foreground" />
-                                    </div>
-                                  )}
+                                  <span className="text-sm font-medium truncate">
+                                    {(brief as unknown as BriefWithTitle)?.title || "Untitled Brief"}
+                                  </span>
+                                  <Badge variant="outline">{brief?.status || "Unknown"}</Badge>
                                 </div>
                               ))}
                             </div>
@@ -648,7 +623,7 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
                   {/* Comments section */}
                   {activeSection === "comments" && (
                     <div className="space-y-4">
-                      <EnhancedCommentSection comments={asset?.comments || []} onAddComment={handleAddComment} />
+                      <EnhancedCommentSection comments={asset?.comments?.filter(comment => !!comment) || []} onAddComment={handleAddComment} />
                     </div>
                   )}
                 </div>
@@ -656,71 +631,6 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }) 
             </div>
           )}
         </div>
-
-        {/* Thumbnail strip for quick navigation (optional) */}
-        {!isLoading && relatedAssets.length > 0 && (
-          <div className="h-16 border-t flex items-center gap-2 p-2 overflow-x-auto">
-            <div
-              className={cn(
-                "h-12 w-12 relative bg-muted rounded-md overflow-hidden cursor-pointer border-2",
-                "border-primary",
-              )}
-            >
-              {asset?.type === "image" ? (
-                <Image src={asset.url || "/placeholder.svg"} alt={asset.name} fill className="object-cover" />
-              ) : asset?.type === "video" ? (
-                <div className="relative h-full w-full">
-                  <Image
-                    src={asset.thumbnail || "/placeholder.svg?query=video thumbnail"}
-                    alt={asset.name}
-                    fill
-                    className="object-cover"
-                  />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <Play className="h-3 w-3 text-white" />
-                  </div>
-                </div>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center">
-                  <FileIcon className="h-4 w-4 text-muted-foreground" />
-                </div>
-              )}
-            </div>
-
-            {relatedAssets.map((relatedAsset) => (
-              <div
-                key={relatedAsset.id}
-                className="h-12 w-12 relative bg-muted rounded-md overflow-hidden cursor-pointer hover:opacity-80"
-                onClick={() => navigateToAsset(relatedAsset.id)}
-              >
-                {relatedAsset.type === "image" ? (
-                  <Image
-                    src={relatedAsset.url || "/placeholder.svg"}
-                    alt={relatedAsset.name}
-                    fill
-                    className="object-cover"
-                  />
-                ) : relatedAsset.type === "video" ? (
-                  <div className="relative h-full w-full">
-                    <Image
-                      src={relatedAsset.thumbnail || "/placeholder.svg?query=video thumbnail"}
-                      alt={relatedAsset.name}
-                      fill
-                      className="object-cover"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                      <Play className="h-3 w-3 text-white" />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center">
-                    <FileIcon className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   )

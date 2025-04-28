@@ -1,0 +1,15 @@
+mutation UploadMedia($file: Upload!) {
+  uploadMedia(file: $file) {
+    id
+    url
+    name
+    file_type
+    s3_key
+    size
+    created_at
+  }
+}
+
+mutation DeleteMedia($id: Int!) {
+  deleteMedia(id: $id)
+} 

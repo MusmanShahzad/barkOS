@@ -1,0 +1,83 @@
+mutation UpdateBrief($id: Int!, $input: BriefInput!) {
+  updateBrief(id: $id, input: $input) {
+    id
+    title
+    description
+    created_at
+    go_live_on
+    about_target_audience
+    about_hook
+    status
+    product {
+      id
+      name
+    }
+    objective {
+      id
+      name
+    }
+    users {
+      id
+      full_name
+      profile_image
+    }
+    tags {
+      id
+      name
+    }
+    assets {
+      id
+      name
+      description
+      media {
+        id
+        url
+        file_type
+      }
+      thumbnail {
+        id
+        url
+      }
+    }
+    related_briefs {
+      id
+      title
+      status
+    }
+    comments {
+      id
+      text
+      user {
+        id
+        full_name
+        profile_image
+      }
+      created_at
+    }
+  }
+}
+
+mutation DeleteBrief($id: Int!) {
+  deleteBrief(id: $id)
+}
+
+mutation SafeUpdateBrief($id: Int!, $input: SafeBriefUpdateInput!) {
+  safeUpdateBrief(id: $id, input: $input) {
+    id
+    title
+    description
+    created_at
+    go_live_on
+    about_target_audience
+    about_hook
+    status
+    product {
+      id
+      name
+    }
+    objective {
+      id
+      name
+    }
+  }
+} 

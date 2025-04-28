@@ -1,0 +1,19 @@
+query GetBriefDropDowns {
+  getProducts {
+    id
+    name
+    description
+    created_at
+  }
+  getObjectives {
+    id
+    name
+    description
+    created_at
+  }
+  getTags {
+    created_at
+    id
+    name
+  }
+} 

@@ -1,0 +1,20 @@
+mutation CreateAsset($input: AssetInput!) {
+  createAsset(input: $input) {
+    id
+    name
+    description
+    media_id
+    thumbnail_media_id
+    created_at
+    media {
+      id
+      url
+      file_type
+    }
+    thumbnail {
+      id
+      url
+      file_type
+    }
+  }
+} 
