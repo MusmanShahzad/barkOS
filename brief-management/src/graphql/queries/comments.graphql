@@ -1,0 +1,46 @@
+query GetComment($id: Int!) {
+  getComment(id: $id) {
+    id
+    text
+    created_at
+    user {
+      id
+      full_name
+      profile_image
+    }
+    mentioned_users {
+      id
+      full_name
+      profile_image
+    }
+  }
+}
+
+query GetComments {
+  getComments {
+    id
+    text
+    created_at
+    user {
+      id
+      full_name
+      profile_image
+    }
+    mentioned_users {
+      id
+      full_name
+      profile_image
+    }
+  }
+}
+
+query GetCommentMentions($commentId: Int!) {
+  getCommentMentions(commentId: $commentId) {
+    id
+    user {
+      id
+      full_name
+      profile_image
+    }
+  }
+} 

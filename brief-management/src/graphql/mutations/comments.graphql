@@ -1,0 +1,70 @@
+mutation AddCommentToBrief($briefId: Int!, $commentInput: CommentInput!) {
+  addCommentToBrief(briefId: $briefId, commentInput: $commentInput) {
+    id
+    text
+    created_at
+    user {
+      id
+      full_name
+      profile_image
+    }
+    mentioned_users {
+      id
+      full_name
+      profile_image
+    }
+  }
+}
+
+mutation CreateComment($input: CommentInput!) {
+  createComment(input: $input) {
+    id
+    text
+    created_at
+    user {
+      id
+      full_name
+      profile_image
+    }
+    mentioned_users {
+      id
+      full_name
+      profile_image
+    }
+  }
+}
+
+mutation UpdateComment($id: Int!, $input: CommentInput!) {
+  updateComment(id: $id, input: $input) {
+    id
+    text
+    created_at
+    user {
+      id
+      full_name
+      profile_image
+    }
+    mentioned_users {
+      id
+      full_name
+      profile_image
+    }
+  }
+}
+
+mutation DeleteComment($id: Int!) {
+  deleteComment(id: $id)
+}
+
+mutation AddMentionToComment($input: CommentMentionInput!) {
+  addMentionToComment(input: $input) {
+    id
+    comment_id
+    user_id
+    created_at
+  }
+}
+
+mutation RemoveMentionFromComment($commentId: Int!, $userId: Int!) {
+  removeMentionFromComment(commentId: $commentId, userId: $userId)
+} 

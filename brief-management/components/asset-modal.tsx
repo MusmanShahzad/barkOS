@@ -14,12 +14,13 @@ import {
   useGetTagsQuery,
   Asset as GraphQLAsset,
   Tag,
-  Maybe
+  Maybe,
+  CommentInput
 } from "../src/graphql/generated/graphql"
 import { Badge } from "./ui/badge"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "./ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover"
-import { Check, ChevronsUpDown, Loader2, AlertCircle, FileIcon, Trash2, Save } from "lucide-react"
+import { Check, ChevronsUpDown, Loader2, AlertCircle, FileIcon, Trash2, Save, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Progress } from "./ui/progress"
 import { useForm, Controller } from "react-hook-form"
@@ -27,6 +28,10 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { BriefTokenizeInput } from "./brief-tokenize-input"
 import React from "react"
+import { Separator } from "./ui/separator"
+import EnhancedCommentSection from "./enhanced-comment-section"
+import { gql } from "@apollo/client"
+import { useMutation } from "@apollo/client"
 
 // Debounce utility function
 function debounce<T extends (...args: any[]) => any>(
@@ -43,6 +48,22 @@ function debounce<T extends (...args: any[]) => any>(
   };
 }
 
+// Define the AddCommentToAsset mutation
+const ADD_COMMENT_TO_ASSET = gql`
+  mutation AddCommentToAsset($assetId: Int!, $commentInput: CommentInput!) {
+    addCommentToAsset(assetId: $assetId, commentInput: $commentInput) {
+      id
+      text
+      created_at
+      user {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
+
 export interface IAsset extends Omit<GraphQLAsset, '__typename' | 'comments' | 'tags' | 'briefs' | 'thumbnail'> {
   url: string;
   fileType: string;
@@ -55,6 +76,30 @@ export interface IAsset extends Omit<GraphQLAsset, '__typename' | 'comments' | '
   } | undefined;
   briefs?: { id: number; title: string }[];
   relatedBriefs?: { id: number; title: string }[];
+  comments?: {
+    id: string;
+    text: string;
+    createdAt: string;
+    user: {
+      id: string;
+      name: string;
+      avatar?: string;
+    } | null;
+  }[];
+}
+
+// Comment interface to match with EnhancedCommentSection props
+interface CommentUser {
+  id: string;
+  name: string;
+  avatar?: string;
+}
+
+interface Comment {
+  id: string;
+  text: string;
+  user: CommentUser; 
+  createdAt: string;
 }
 
 export interface AssetModalProps {
@@ -90,11 +135,15 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
   const [mediaRemoved, setMediaRemoved] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // Add state for comments
+  const [comments, setComments] = useState<Comment[]>([]);
 
   // Mutations and queries
   const [createAsset] = useCreateAssetMutation();
   const [updateAsset] = useUpdateAssetMutation();
   const { data: tagsData } = useGetTagsQuery();
+  // Add the ADD_COMMENT_TO_ASSET mutation
+  const [addCommentToAsset, { loading: addingComment }] = useMutation(ADD_COMMENT_TO_ASSET);
 
   // Form ref for manual submission
   const formRef = React.useRef<HTMLFormElement>(null);
@@ -321,6 +370,7 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
         briefs: briefsData,
         created_at: asset?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        comments: [],
       };
 
       setAutoSaveStatus('saved');
@@ -543,6 +593,96 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
     };
   }, [isOpen, reset]);
 
+  // Load comments when asset changes
+  useEffect(() => {
+    if (asset?.id && isOpen) {
+      // Initialize comments from the asset data if available
+      if (asset.comments && asset.comments.length > 0) {
+        setComments(asset.comments.map(comment => ({
+          id: comment.id,
+          text: comment.text,
+          user: comment.user,
+          createdAt: comment.createdAt
+        })));
+      } else {
+        setComments([]);
+      }
+    }
+  }, [asset?.id, asset?.comments, isOpen]);
+
+  // Add handler for submitting comments
+  const handleAddComment = async (text: string, mentionedUsers: {id: string, name: string}[] = []) => {
+    // Only allow adding comments in edit mode (when asset exists)
+    if (!asset?.id) {
+      toast.error("Comments can only be added to saved assets");
+      return;
+    }
+    
+    if (!text.trim()) {
+      toast.error("Comment text cannot be empty");
+      return;
+    }
+    
+    try {
+      // Hard-coded user ID for demo purposes - in production, this should come from auth
+      const userId = 2;
+      
+      // Create a comment input object with the proper field name
+      const commentInput: CommentInput = {
+        text: text.trim(), // Make sure to trim the text
+        user_id: userId
+      };
+      
+      console.log("Sending comment:", commentInput);
+      
+      // Call the mutation
+      const response = await addCommentToAsset({
+        variables: {
+          assetId: Number(asset.id),
+          commentInput
+        }
+      });
+      
+      if (response.data?.addCommentToAsset) {
+        const newComment = response.data.addCommentToAsset;
+        
+        console.log("Received comment:", newComment);
+        
+        // Add the new comment to the state
+        setComments(prevComments => [
+          ...prevComments,
+          {
+            id: String(newComment.id),
+            text: newComment.text || '', // Default to empty string if null
+            user: {
+              id: String(newComment.user?.id || 0),
+              name: newComment.user?.full_name || 'Unknown User',
+              avatar: newComment.user?.profile_image || undefined
+            },
+            createdAt: newComment.created_at || new Date().toISOString()
+          }
+        ]);
+        
+        toast.success("Comment added successfully");
+      } else {
+        throw new Error("Failed to add comment. Server returned no data.");
+      }
+    } catch (error: any) {
+      console.error("Error adding comment:", error);
+      let errorMessage = "Failed to add comment";
+      
+      if (error.message) {
+        errorMessage += `: ${error.message}`;
+      }
+      
+      if (error.networkError) {
+        errorMessage += " - Network error. Please check your connection.";
+      }
+      
+      toast.error(errorMessage);
+    }
+  };
+
   return (
     <Dialog 
       open={isOpen} 
@@ -736,6 +876,44 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
                 onChange={handleBriefChange}
                 placeholder="Link to briefs..."
               />
+            </div>
+
+            {/* Comments Section */}
+            <div className="space-y-3">
+              {/* <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                  <h3 className="text-sm font-medium">Comments</h3>
+                </div>
+                {asset && comments.length > 0 && (
+                  <Badge variant="outline">{comments.length}</Badge>
+                )}
+              </div>
+              <Separator /> */}
+              {/* Only show comments section when in edit mode (when asset already exists) */}
+              {/* {asset ? (
+                <div className="mt-4">
+                  <EnhancedCommentSection 
+                    comments={comments.map(comment => ({
+                      id: comment.id,
+                      text: comment.text,
+                      user: {
+                        id: comment.user.id || '0',
+                        name: comment.user.name || 'Unknown User',
+                        avatar: comment.user.avatar
+                      },
+                      createdAt: comment.createdAt
+                    }))} 
+                    onAddComment={handleAddComment}
+                    isLoading={addingComment}
+                    placeholder="Add a comment to this asset..."
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
+                  <p>Comments will be available after creating the asset</p>
+                </div>
+              )} */}
             </div>
           </form>
         </div>

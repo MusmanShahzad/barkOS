@@ -255,14 +255,33 @@ export type Comment = {
   readonly briefs?: Maybe<ReadonlyArray<Maybe<Brief>>>;
   readonly created_at: Scalars["String"]["output"];
   readonly id: Scalars["Int"]["output"];
+  readonly mentioned_users?: Maybe<ReadonlyArray<Maybe<User>>>;
   readonly text?: Maybe<Scalars["String"]["output"]>;
   readonly user?: Maybe<User>;
   readonly user_id?: Maybe<Scalars["Int"]["output"]>;
 };
 
 export type CommentInput = {
+  readonly mentioned_user_ids?: InputMaybe<
+    ReadonlyArray<InputMaybe<Scalars["Int"]["input"]>>
+  >;
   readonly text?: InputMaybe<Scalars["String"]["input"]>;
   readonly user_id?: InputMaybe<Scalars["Int"]["input"]>;
+};
+
+export type CommentMention = {
+  readonly __typename: "CommentMention";
+  readonly comment?: Maybe<Comment>;
+  readonly comment_id: Scalars["Int"]["output"];
+  readonly created_at: Scalars["String"]["output"];
+  readonly id: Scalars["Int"]["output"];
+  readonly user?: Maybe<User>;
+  readonly user_id: Scalars["Int"]["output"];
+};
+
+export type CommentMentionInput = {
+  readonly comment_id: Scalars["Int"]["input"];
+  readonly user_id: Scalars["Int"]["input"];
 };
 
 export type DateRangeInput = {
@@ -297,6 +316,9 @@ export type MediaUploadResponse = {
 
 export type Mutation = {
   readonly __typename: "Mutation";
+  readonly addCommentToAsset?: Maybe<Comment>;
+  readonly addCommentToBrief?: Maybe<Comment>;
+  readonly addMentionToComment?: Maybe<CommentMention>;
   readonly addUserToBrief?: Maybe<Scalars["Boolean"]["output"]>;
   readonly createAsset?: Maybe<Asset>;
   readonly createAssetComment?: Maybe<AssetComment>;
@@ -324,6 +346,7 @@ export type Mutation = {
   readonly deleteProduct?: Maybe<Scalars["Boolean"]["output"]>;
   readonly deleteTag?: Maybe<Scalars["Boolean"]["output"]>;
   readonly deleteUser?: Maybe<Scalars["Boolean"]["output"]>;
+  readonly removeMentionFromComment?: Maybe<Scalars["Boolean"]["output"]>;
   readonly removeUserFromBrief?: Maybe<Scalars["Boolean"]["output"]>;
   readonly safeUpdateBrief?: Maybe<Brief>;
   readonly updateAsset?: Maybe<Asset>;
@@ -335,6 +358,20 @@ export type Mutation = {
   readonly updateTag?: Maybe<Tag>;
   readonly updateUser?: Maybe<User>;
   readonly uploadMedia: MediaUploadResponse;
+};
+
+export type MutationAddCommentToAssetArgs = {
+  assetId: Scalars["Int"]["input"];
+  commentInput: CommentInput;
+};
+
+export type MutationAddCommentToBriefArgs = {
+  briefId: Scalars["Int"]["input"];
+  commentInput: CommentInput;
+};
+
+export type MutationAddMentionToCommentArgs = {
+  input: CommentMentionInput;
 };
 
 export type MutationAddUserToBriefArgs = {
@@ -444,6 +481,11 @@ export type MutationDeleteTagArgs = {
 
 export type MutationDeleteUserArgs = {
   id: Scalars["Int"]["input"];
+};
+
+export type MutationRemoveMentionFromCommentArgs = {
+  commentId: Scalars["Int"]["input"];
+  userId: Scalars["Int"]["input"];
 };
 
 export type MutationRemoveUserFromBriefArgs = {
@@ -590,6 +632,7 @@ export type Query = {
   readonly getBriefUsers?: Maybe<ReadonlyArray<Maybe<User>>>;
   readonly getBriefs: PaginatedBriefs;
   readonly getComment?: Maybe<Comment>;
+  readonly getCommentMentions?: Maybe<ReadonlyArray<Maybe<CommentMention>>>;
   readonly getComments?: Maybe<ReadonlyArray<Maybe<Comment>>>;
   readonly getMedia?: Maybe<Media>;
   readonly getMedias?: Maybe<ReadonlyArray<Maybe<Media>>>;
@@ -671,6 +714,10 @@ export type QueryGetBriefsArgs = {
 
 export type QueryGetCommentArgs = {
   id: Scalars["Int"]["input"];
+};
+
+export type QueryGetCommentMentionsArgs = {
+  commentId: Scalars["Int"]["input"];
 };
 
 export type QueryGetMediaArgs = {
@@ -849,6 +896,33 @@ export type DeleteAssetMutationVariables = Exact<{
 export type DeleteAssetMutationResult = {
   readonly __typename: "Mutation";
   readonly deleteAsset?: boolean | null;
+};
+
+export type AddCommentToBriefMutationVariables = Exact<{
+  briefId: Scalars["Int"]["input"];
+  commentInput: CommentInput;
+}>;
+
+export type AddCommentToBriefMutationResult = {
+  readonly __typename: "Mutation";
+  readonly addCommentToBrief?: {
+    readonly __typename: "Comment";
+    readonly id: number;
+    readonly text?: string | null;
+    readonly created_at: string;
+    readonly user?: {
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null;
+    readonly mentioned_users?: ReadonlyArray<{
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null> | null;
+  } | null;
 };
 
 export type CreateBriefMutationVariables = Exact<{
@@ -1039,6 +1113,93 @@ export type SafeUpdateBriefMutationResult = {
       readonly name?: string | null;
     } | null;
   } | null;
+};
+
+export type CreateCommentMutationVariables = Exact<{
+  input: CommentInput;
+}>;
+
+export type CreateCommentMutationResult = {
+  readonly __typename: "Mutation";
+  readonly createComment?: {
+    readonly __typename: "Comment";
+    readonly id: number;
+    readonly text?: string | null;
+    readonly created_at: string;
+    readonly user?: {
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null;
+    readonly mentioned_users?: ReadonlyArray<{
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null> | null;
+  } | null;
+};
+
+export type UpdateCommentMutationVariables = Exact<{
+  id: Scalars["Int"]["input"];
+  input: CommentInput;
+}>;
+
+export type UpdateCommentMutationResult = {
+  readonly __typename: "Mutation";
+  readonly updateComment?: {
+    readonly __typename: "Comment";
+    readonly id: number;
+    readonly text?: string | null;
+    readonly created_at: string;
+    readonly user?: {
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null;
+    readonly mentioned_users?: ReadonlyArray<{
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null> | null;
+  } | null;
+};
+
+export type DeleteCommentMutationVariables = Exact<{
+  id: Scalars["Int"]["input"];
+}>;
+
+export type DeleteCommentMutationResult = {
+  readonly __typename: "Mutation";
+  readonly deleteComment?: boolean | null;
+};
+
+export type AddMentionToCommentMutationVariables = Exact<{
+  input: CommentMentionInput;
+}>;
+
+export type AddMentionToCommentMutationResult = {
+  readonly __typename: "Mutation";
+  readonly addMentionToComment?: {
+    readonly __typename: "CommentMention";
+    readonly id: number;
+    readonly comment_id: number;
+    readonly user_id: number;
+    readonly created_at: string;
+  } | null;
+};
+
+export type RemoveMentionFromCommentMutationVariables = Exact<{
+  commentId: Scalars["Int"]["input"];
+  userId: Scalars["Int"]["input"];
+}>;
+
+export type RemoveMentionFromCommentMutationResult = {
+  readonly __typename: "Mutation";
+  readonly removeMentionFromComment?: boolean | null;
 };
 
 export type UploadMediaMutationVariables = Exact<{
@@ -1295,6 +1456,13 @@ export type GetBriefsQueryResult = {
           readonly email?: string | null;
           readonly profile_image?: string | null;
         } | null;
+        readonly mentioned_users?: ReadonlyArray<{
+          readonly __typename: "User";
+          readonly id: number;
+          readonly full_name?: string | null;
+          readonly email?: string | null;
+          readonly profile_image?: string | null;
+        } | null> | null;
       } | null> | null;
       readonly tags?: ReadonlyArray<{
         readonly __typename: "Tag";
@@ -1384,6 +1552,13 @@ export type GetBriefQueryResult = {
         readonly email?: string | null;
         readonly profile_image?: string | null;
       } | null;
+      readonly mentioned_users?: ReadonlyArray<{
+        readonly __typename: "User";
+        readonly id: number;
+        readonly full_name?: string | null;
+        readonly email?: string | null;
+        readonly profile_image?: string | null;
+      } | null> | null;
     } | null> | null;
     readonly tags?: ReadonlyArray<{
       readonly __typename: "Tag";
@@ -1404,6 +1579,74 @@ export type GetBriefQueryResult = {
       readonly status?: BriefStatus | null;
     } | null> | null;
   } | null;
+};
+
+export type GetCommentQueryVariables = Exact<{
+  id: Scalars["Int"]["input"];
+}>;
+
+export type GetCommentQueryResult = {
+  readonly __typename: "Query";
+  readonly getComment?: {
+    readonly __typename: "Comment";
+    readonly id: number;
+    readonly text?: string | null;
+    readonly created_at: string;
+    readonly user?: {
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null;
+    readonly mentioned_users?: ReadonlyArray<{
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null> | null;
+  } | null;
+};
+
+export type GetCommentsQueryVariables = Exact<{ [key: string]: never }>;
+
+export type GetCommentsQueryResult = {
+  readonly __typename: "Query";
+  readonly getComments?: ReadonlyArray<{
+    readonly __typename: "Comment";
+    readonly id: number;
+    readonly text?: string | null;
+    readonly created_at: string;
+    readonly user?: {
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null;
+    readonly mentioned_users?: ReadonlyArray<{
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null> | null;
+  } | null> | null;
+};
+
+export type GetCommentMentionsQueryVariables = Exact<{
+  commentId: Scalars["Int"]["input"];
+}>;
+
+export type GetCommentMentionsQueryResult = {
+  readonly __typename: "Query";
+  readonly getCommentMentions?: ReadonlyArray<{
+    readonly __typename: "CommentMention";
+    readonly id: number;
+    readonly user?: {
+      readonly __typename: "User";
+      readonly id: number;
+      readonly full_name?: string | null;
+      readonly profile_image?: string | null;
+    } | null;
+  } | null> | null;
 };
 
 export type GetTagsQueryVariables = Exact<{ [key: string]: never }>;
@@ -1639,6 +1882,69 @@ export type DeleteAssetMutationResult =
 export type DeleteAssetMutationOptions = Apollo.BaseMutationOptions<
   DeleteAssetMutationResult,
   DeleteAssetMutationVariables
+>;
+export const AddCommentToBriefDocument = gql`
+  mutation AddCommentToBrief($briefId: Int!, $commentInput: CommentInput!) {
+    addCommentToBrief(briefId: $briefId, commentInput: $commentInput) {
+      id
+      text
+      created_at
+      user {
+        id
+        full_name
+        profile_image
+      }
+      mentioned_users {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
+export type AddCommentToBriefMutationFn = Apollo.MutationFunction<
+  AddCommentToBriefMutationResult,
+  AddCommentToBriefMutationVariables
+>;
+
+/**
+ * __useAddCommentToBriefMutation__
+ *
+ * To run a mutation, you first call `useAddCommentToBriefMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useAddCommentToBriefMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [addCommentToBriefMutation, { data, loading, error }] = useAddCommentToBriefMutation({
+ *   variables: {
+ *      briefId: // value for 'briefId'
+ *      commentInput: // value for 'commentInput'
+ *   },
+ * });
+ */
+export function useAddCommentToBriefMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    AddCommentToBriefMutationResult,
+    AddCommentToBriefMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    AddCommentToBriefMutationResult,
+    AddCommentToBriefMutationVariables
+  >(AddCommentToBriefDocument, options);
+}
+export type AddCommentToBriefMutationHookResult = ReturnType<
+  typeof useAddCommentToBriefMutation
+>;
+export type AddCommentToBriefMutationResult =
+  Apollo.MutationResult<AddCommentToBriefMutationResult>;
+export type AddCommentToBriefMutationOptions = Apollo.BaseMutationOptions<
+  AddCommentToBriefMutationResult,
+  AddCommentToBriefMutationVariables
 >;
 export const CreateBriefDocument = gql`
   mutation CreateBrief($input: BriefInput!) {
@@ -1961,6 +2267,282 @@ export type SafeUpdateBriefMutationOptions = Apollo.BaseMutationOptions<
   SafeUpdateBriefMutationResult,
   SafeUpdateBriefMutationVariables
 >;
+export const CreateCommentDocument = gql`
+  mutation CreateComment($input: CommentInput!) {
+    createComment(input: $input) {
+      id
+      text
+      created_at
+      user {
+        id
+        full_name
+        profile_image
+      }
+      mentioned_users {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
+export type CreateCommentMutationFn = Apollo.MutationFunction<
+  CreateCommentMutationResult,
+  CreateCommentMutationVariables
+>;
+
+/**
+ * __useCreateCommentMutation__
+ *
+ * To run a mutation, you first call `useCreateCommentMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useCreateCommentMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [createCommentMutation, { data, loading, error }] = useCreateCommentMutation({
+ *   variables: {
+ *      input: // value for 'input'
+ *   },
+ * });
+ */
+export function useCreateCommentMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    CreateCommentMutationResult,
+    CreateCommentMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    CreateCommentMutationResult,
+    CreateCommentMutationVariables
+  >(CreateCommentDocument, options);
+}
+export type CreateCommentMutationHookResult = ReturnType<
+  typeof useCreateCommentMutation
+>;
+export type CreateCommentMutationResult =
+  Apollo.MutationResult<CreateCommentMutationResult>;
+export type CreateCommentMutationOptions = Apollo.BaseMutationOptions<
+  CreateCommentMutationResult,
+  CreateCommentMutationVariables
+>;
+export const UpdateCommentDocument = gql`
+  mutation UpdateComment($id: Int!, $input: CommentInput!) {
+    updateComment(id: $id, input: $input) {
+      id
+      text
+      created_at
+      user {
+        id
+        full_name
+        profile_image
+      }
+      mentioned_users {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
+export type UpdateCommentMutationFn = Apollo.MutationFunction<
+  UpdateCommentMutationResult,
+  UpdateCommentMutationVariables
+>;
+
+/**
+ * __useUpdateCommentMutation__
+ *
+ * To run a mutation, you first call `useUpdateCommentMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useUpdateCommentMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [updateCommentMutation, { data, loading, error }] = useUpdateCommentMutation({
+ *   variables: {
+ *      id: // value for 'id'
+ *      input: // value for 'input'
+ *   },
+ * });
+ */
+export function useUpdateCommentMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    UpdateCommentMutationResult,
+    UpdateCommentMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    UpdateCommentMutationResult,
+    UpdateCommentMutationVariables
+  >(UpdateCommentDocument, options);
+}
+export type UpdateCommentMutationHookResult = ReturnType<
+  typeof useUpdateCommentMutation
+>;
+export type UpdateCommentMutationResult =
+  Apollo.MutationResult<UpdateCommentMutationResult>;
+export type UpdateCommentMutationOptions = Apollo.BaseMutationOptions<
+  UpdateCommentMutationResult,
+  UpdateCommentMutationVariables
+>;
+export const DeleteCommentDocument = gql`
+  mutation DeleteComment($id: Int!) {
+    deleteComment(id: $id)
+  }
+`;
+export type DeleteCommentMutationFn = Apollo.MutationFunction<
+  DeleteCommentMutationResult,
+  DeleteCommentMutationVariables
+>;
+
+/**
+ * __useDeleteCommentMutation__
+ *
+ * To run a mutation, you first call `useDeleteCommentMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useDeleteCommentMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [deleteCommentMutation, { data, loading, error }] = useDeleteCommentMutation({
+ *   variables: {
+ *      id: // value for 'id'
+ *   },
+ * });
+ */
+export function useDeleteCommentMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    DeleteCommentMutationResult,
+    DeleteCommentMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    DeleteCommentMutationResult,
+    DeleteCommentMutationVariables
+  >(DeleteCommentDocument, options);
+}
+export type DeleteCommentMutationHookResult = ReturnType<
+  typeof useDeleteCommentMutation
+>;
+export type DeleteCommentMutationResult =
+  Apollo.MutationResult<DeleteCommentMutationResult>;
+export type DeleteCommentMutationOptions = Apollo.BaseMutationOptions<
+  DeleteCommentMutationResult,
+  DeleteCommentMutationVariables
+>;
+export const AddMentionToCommentDocument = gql`
+  mutation AddMentionToComment($input: CommentMentionInput!) {
+    addMentionToComment(input: $input) {
+      id
+      comment_id
+      user_id
+      created_at
+    }
+  }
+`;
+export type AddMentionToCommentMutationFn = Apollo.MutationFunction<
+  AddMentionToCommentMutationResult,
+  AddMentionToCommentMutationVariables
+>;
+
+/**
+ * __useAddMentionToCommentMutation__
+ *
+ * To run a mutation, you first call `useAddMentionToCommentMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useAddMentionToCommentMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [addMentionToCommentMutation, { data, loading, error }] = useAddMentionToCommentMutation({
+ *   variables: {
+ *      input: // value for 'input'
+ *   },
+ * });
+ */
+export function useAddMentionToCommentMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    AddMentionToCommentMutationResult,
+    AddMentionToCommentMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    AddMentionToCommentMutationResult,
+    AddMentionToCommentMutationVariables
+  >(AddMentionToCommentDocument, options);
+}
+export type AddMentionToCommentMutationHookResult = ReturnType<
+  typeof useAddMentionToCommentMutation
+>;
+export type AddMentionToCommentMutationResult =
+  Apollo.MutationResult<AddMentionToCommentMutationResult>;
+export type AddMentionToCommentMutationOptions = Apollo.BaseMutationOptions<
+  AddMentionToCommentMutationResult,
+  AddMentionToCommentMutationVariables
+>;
+export const RemoveMentionFromCommentDocument = gql`
+  mutation RemoveMentionFromComment($commentId: Int!, $userId: Int!) {
+    removeMentionFromComment(commentId: $commentId, userId: $userId)
+  }
+`;
+export type RemoveMentionFromCommentMutationFn = Apollo.MutationFunction<
+  RemoveMentionFromCommentMutationResult,
+  RemoveMentionFromCommentMutationVariables
+>;
+
+/**
+ * __useRemoveMentionFromCommentMutation__
+ *
+ * To run a mutation, you first call `useRemoveMentionFromCommentMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useRemoveMentionFromCommentMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [removeMentionFromCommentMutation, { data, loading, error }] = useRemoveMentionFromCommentMutation({
+ *   variables: {
+ *      commentId: // value for 'commentId'
+ *      userId: // value for 'userId'
+ *   },
+ * });
+ */
+export function useRemoveMentionFromCommentMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    RemoveMentionFromCommentMutationResult,
+    RemoveMentionFromCommentMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    RemoveMentionFromCommentMutationResult,
+    RemoveMentionFromCommentMutationVariables
+  >(RemoveMentionFromCommentDocument, options);
+}
+export type RemoveMentionFromCommentMutationHookResult = ReturnType<
+  typeof useRemoveMentionFromCommentMutation
+>;
+export type RemoveMentionFromCommentMutationResult =
+  Apollo.MutationResult<RemoveMentionFromCommentMutationResult>;
+export type RemoveMentionFromCommentMutationOptions =
+  Apollo.BaseMutationOptions<
+    RemoveMentionFromCommentMutationResult,
+    RemoveMentionFromCommentMutationVariables
+  >;
 export const UploadMediaDocument = gql`
   mutation UploadMedia($file: Upload!) {
     uploadMedia(file: $file) {
@@ -2469,6 +3051,12 @@ export const GetBriefsDocument = gql`
             email
             profile_image
           }
+          mentioned_users {
+            id
+            full_name
+            email
+            profile_image
+          }
         }
         tags {
           id
@@ -2625,6 +3213,12 @@ export const GetBriefDocument = gql`
           email
           profile_image
         }
+        mentioned_users {
+          id
+          full_name
+          email
+          profile_image
+        }
       }
       tags {
         id
@@ -2716,6 +3310,283 @@ export type GetBriefQueryResult = Apollo.QueryResult<
 >;
 export function refetchGetBriefQuery(variables: GetBriefQueryVariables) {
   return { query: GetBriefDocument, variables: variables };
+}
+export const GetCommentDocument = gql`
+  query GetComment($id: Int!) {
+    getComment(id: $id) {
+      id
+      text
+      created_at
+      user {
+        id
+        full_name
+        profile_image
+      }
+      mentioned_users {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
+
+/**
+ * __useGetCommentQuery__
+ *
+ * To run a query within a React component, call `useGetCommentQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetCommentQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetCommentQuery({
+ *   variables: {
+ *      id: // value for 'id'
+ *   },
+ * });
+ */
+export function useGetCommentQuery(
+  baseOptions: Apollo.QueryHookOptions<
+    GetCommentQueryResult,
+    GetCommentQueryVariables
+  > &
+    (
+      | { variables: GetCommentQueryVariables; skip?: boolean }
+      | { skip: boolean }
+    ),
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useQuery<GetCommentQueryResult, GetCommentQueryVariables>(
+    GetCommentDocument,
+    options,
+  );
+}
+export function useGetCommentLazyQuery(
+  baseOptions?: Apollo.LazyQueryHookOptions<
+    GetCommentQueryResult,
+    GetCommentQueryVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useLazyQuery<GetCommentQueryResult, GetCommentQueryVariables>(
+    GetCommentDocument,
+    options,
+  );
+}
+export function useGetCommentSuspenseQuery(
+  baseOptions?:
+    | Apollo.SkipToken
+    | Apollo.SuspenseQueryHookOptions<
+        GetCommentQueryResult,
+        GetCommentQueryVariables
+      >,
+) {
+  const options =
+    baseOptions === Apollo.skipToken
+      ? baseOptions
+      : { ...defaultOptions, ...baseOptions };
+  return Apollo.useSuspenseQuery<
+    GetCommentQueryResult,
+    GetCommentQueryVariables
+  >(GetCommentDocument, options);
+}
+export type GetCommentQueryHookResult = ReturnType<typeof useGetCommentQuery>;
+export type GetCommentLazyQueryHookResult = ReturnType<
+  typeof useGetCommentLazyQuery
+>;
+export type GetCommentSuspenseQueryHookResult = ReturnType<
+  typeof useGetCommentSuspenseQuery
+>;
+export type GetCommentQueryResult = Apollo.QueryResult<
+  GetCommentQueryResult,
+  GetCommentQueryVariables
+>;
+export function refetchGetCommentQuery(variables: GetCommentQueryVariables) {
+  return { query: GetCommentDocument, variables: variables };
+}
+export const GetCommentsDocument = gql`
+  query GetComments {
+    getComments {
+      id
+      text
+      created_at
+      user {
+        id
+        full_name
+        profile_image
+      }
+      mentioned_users {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
+
+/**
+ * __useGetCommentsQuery__
+ *
+ * To run a query within a React component, call `useGetCommentsQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetCommentsQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetCommentsQuery({
+ *   variables: {
+ *   },
+ * });
+ */
+export function useGetCommentsQuery(
+  baseOptions?: Apollo.QueryHookOptions<
+    GetCommentsQueryResult,
+    GetCommentsQueryVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useQuery<GetCommentsQueryResult, GetCommentsQueryVariables>(
+    GetCommentsDocument,
+    options,
+  );
+}
+export function useGetCommentsLazyQuery(
+  baseOptions?: Apollo.LazyQueryHookOptions<
+    GetCommentsQueryResult,
+    GetCommentsQueryVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useLazyQuery<GetCommentsQueryResult, GetCommentsQueryVariables>(
+    GetCommentsDocument,
+    options,
+  );
+}
+export function useGetCommentsSuspenseQuery(
+  baseOptions?:
+    | Apollo.SkipToken
+    | Apollo.SuspenseQueryHookOptions<
+        GetCommentsQueryResult,
+        GetCommentsQueryVariables
+      >,
+) {
+  const options =
+    baseOptions === Apollo.skipToken
+      ? baseOptions
+      : { ...defaultOptions, ...baseOptions };
+  return Apollo.useSuspenseQuery<
+    GetCommentsQueryResult,
+    GetCommentsQueryVariables
+  >(GetCommentsDocument, options);
+}
+export type GetCommentsQueryHookResult = ReturnType<typeof useGetCommentsQuery>;
+export type GetCommentsLazyQueryHookResult = ReturnType<
+  typeof useGetCommentsLazyQuery
+>;
+export type GetCommentsSuspenseQueryHookResult = ReturnType<
+  typeof useGetCommentsSuspenseQuery
+>;
+export type GetCommentsQueryResult = Apollo.QueryResult<
+  GetCommentsQueryResult,
+  GetCommentsQueryVariables
+>;
+export function refetchGetCommentsQuery(variables?: GetCommentsQueryVariables) {
+  return { query: GetCommentsDocument, variables: variables };
+}
+export const GetCommentMentionsDocument = gql`
+  query GetCommentMentions($commentId: Int!) {
+    getCommentMentions(commentId: $commentId) {
+      id
+      user {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
+
+/**
+ * __useGetCommentMentionsQuery__
+ *
+ * To run a query within a React component, call `useGetCommentMentionsQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetCommentMentionsQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetCommentMentionsQuery({
+ *   variables: {
+ *      commentId: // value for 'commentId'
+ *   },
+ * });
+ */
+export function useGetCommentMentionsQuery(
+  baseOptions: Apollo.QueryHookOptions<
+    GetCommentMentionsQueryResult,
+    GetCommentMentionsQueryVariables
+  > &
+    (
+      | { variables: GetCommentMentionsQueryVariables; skip?: boolean }
+      | { skip: boolean }
+    ),
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useQuery<
+    GetCommentMentionsQueryResult,
+    GetCommentMentionsQueryVariables
+  >(GetCommentMentionsDocument, options);
+}
+export function useGetCommentMentionsLazyQuery(
+  baseOptions?: Apollo.LazyQueryHookOptions<
+    GetCommentMentionsQueryResult,
+    GetCommentMentionsQueryVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useLazyQuery<
+    GetCommentMentionsQueryResult,
+    GetCommentMentionsQueryVariables
+  >(GetCommentMentionsDocument, options);
+}
+export function useGetCommentMentionsSuspenseQuery(
+  baseOptions?:
+    | Apollo.SkipToken
+    | Apollo.SuspenseQueryHookOptions<
+        GetCommentMentionsQueryResult,
+        GetCommentMentionsQueryVariables
+      >,
+) {
+  const options =
+    baseOptions === Apollo.skipToken
+      ? baseOptions
+      : { ...defaultOptions, ...baseOptions };
+  return Apollo.useSuspenseQuery<
+    GetCommentMentionsQueryResult,
+    GetCommentMentionsQueryVariables
+  >(GetCommentMentionsDocument, options);
+}
+export type GetCommentMentionsQueryHookResult = ReturnType<
+  typeof useGetCommentMentionsQuery
+>;
+export type GetCommentMentionsLazyQueryHookResult = ReturnType<
+  typeof useGetCommentMentionsLazyQuery
+>;
+export type GetCommentMentionsSuspenseQueryHookResult = ReturnType<
+  typeof useGetCommentMentionsSuspenseQuery
+>;
+export type GetCommentMentionsQueryResult = Apollo.QueryResult<
+  GetCommentMentionsQueryResult,
+  GetCommentMentionsQueryVariables
+>;
+export function refetchGetCommentMentionsQuery(
+  variables: GetCommentMentionsQueryVariables,
+) {
+  return { query: GetCommentMentionsDocument, variables: variables };
 }
 export const GetTagsDocument = gql`
   query GetTags {

@@ -51,6 +51,12 @@ query GetBriefs($pagination: PaginationInput!, $filters: BriefFilters, $sort: [B
           email
           profile_image
         }
+        mentioned_users {
+          id
+          full_name
+          email
+          profile_image
+        }
       }
       tags {
         id
@@ -123,6 +129,12 @@ query GetBrief($id: Int!) {
       user_id
       created_at
       user {
+        id
+        full_name
+        email
+        profile_image
+      }
+      mentioned_users {
         id
         full_name
         email

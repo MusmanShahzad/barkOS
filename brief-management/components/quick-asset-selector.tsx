@@ -336,14 +336,14 @@ export function QuickAssetSelector({
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <Button size="sm" variant="ghost" onClick={onAddNew}>
+                <Button type="buttton" size="sm" variant="ghost" onClick={onAddNew}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
               <div className="flex items-center justify-between">
                 <Tabs defaultValue="grid">
                   <TabsList className="h-8">
-                    <TabsTrigger value="grid" className="px-2 h-7" onClick={() => setViewMode("grid")}>
+                    <TabsTrigger value="grid" className="px-2 h-7 overflow-auto" onClick={() => setViewMode("grid")}>
                       <Grid className="h-4 w-4" />
                     </TabsTrigger>
                     <TabsTrigger value="list" className="px-2 h-7" onClick={() => setViewMode("list")}>
@@ -358,7 +358,7 @@ export function QuickAssetSelector({
             </div>
 
             {viewMode === "grid" ? (
-              <div className="p-2">
+              <div className="p-2 h-[300px] overflow-auto">
                 {loading && availableAssets.length === 0 ? (
                   <div className="flex items-center justify-center p-4">
                     <Loader2 className="h-6 w-6 animate-spin mr-2" />
@@ -395,9 +395,9 @@ export function QuickAssetSelector({
             )}
           </PopoverContent>
         </Popover>
-        <Button size="icon" variant="outline" onClick={onAddNew}>
+        {/* <Button size="icon" variant="outline" onClick={onAddNew}>
           <Upload className="h-4 w-4" />
-        </Button>
+        </Button> */}
       </div>
 
       {/* Selected assets preview */}

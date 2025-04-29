@@ -6,6 +6,7 @@ import { BriefResolvers } from './types/briefResolvers';
 import { BriefAssetResolvers } from './types/briefAssetResolvers';
 import { BriefCommentResolvers } from './types/briefCommentResolvers';
 import { BriefTagResolvers } from './types/briefTagResolvers';
+import { CommentResolvers } from './types/commentResolvers';
 import { ProductResolvers } from './types/productResolvers';
 import { ObjectiveResolvers } from './types/objectiveResolvers';
 import { UserResolvers } from './types/userResolvers';
@@ -47,6 +48,7 @@ export const resolvers = {
   BriefAsset: BriefAssetResolvers,
   BriefComment: BriefCommentResolvers,
   BriefTag: BriefTagResolvers,
+  Comment: CommentResolvers,
   Product: ProductResolvers,
   Objective: ObjectiveResolvers,
   User: UserResolvers,

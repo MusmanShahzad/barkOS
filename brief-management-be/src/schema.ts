@@ -102,6 +102,16 @@ export const typeDefs = `#graphql
     user: User
     assets: [Asset]
     briefs: [Brief]
+    mentioned_users: [User]
+  }
+
+  type CommentMention {
+    id: Int!
+    comment_id: Int!
+    user_id: Int!
+    created_at: String!
+    comment: Comment
+    user: User
   }
 
   type Tag {
@@ -200,6 +210,12 @@ export const typeDefs = `#graphql
   input CommentInput {
     text: String
     user_id: Int
+    mentioned_user_ids: [Int]
+  }
+
+  input CommentMentionInput {
+    comment_id: Int!
+    user_id: Int!
   }
 
   input TagInput {
@@ -406,6 +422,7 @@ export const typeDefs = `#graphql
     # Comment queries
     getComment(id: Int!): Comment
     getComments: [Comment]
+    getCommentMentions(commentId: Int!): [CommentMention]
     
     # Tag queries
     getTag(id: Int!): Tag
@@ -433,6 +450,7 @@ export const typeDefs = `#graphql
     # AssetComment mutations
     createAssetComment(input: AssetCommentInput!): AssetComment
     deleteAssetComment(id: Int!): Boolean
+    addCommentToAsset(assetId: Int!, commentInput: CommentInput!): Comment
     
     # AssetTag mutations
     createAssetTag(input: AssetTagInput!): AssetTag
@@ -451,6 +469,7 @@ export const typeDefs = `#graphql
     # BriefComment mutations
     createBriefComment(input: BriefCommentInput!): BriefComment
     deleteBriefComment(id: Int!): Boolean
+    addCommentToBrief(briefId: Int!, commentInput: CommentInput!): Comment
     
     # BriefTag mutations
     createBriefTag(input: BriefTagInput!): BriefTag
@@ -460,6 +479,8 @@ export const typeDefs = `#graphql
     createComment(input: CommentInput!): Comment
     updateComment(id: Int!, input: CommentInput!): Comment
     deleteComment(id: Int!): Boolean
+    addMentionToComment(input: CommentMentionInput!): CommentMention
+    removeMentionFromComment(commentId: Int!, userId: Int!): Boolean
     
     # Tag mutations
     createTag(input: TagInput!): Tag

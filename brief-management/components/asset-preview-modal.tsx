@@ -27,6 +27,7 @@ import {
   Minimize,
   Link,
   Edit,
+  Loader2
 } from "lucide-react"
 import { formatFileSize, formatDate } from "@/lib/utils"
 import Image from "next/image"
@@ -35,8 +36,25 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 import EnhancedCommentSection from "@/components/enhanced-comment-section"
-import { useGetAssetQuery, GetAssetQueryResult, BriefStatus } from "@/src/graphql/generated/graphql"
+import { useGetAssetQuery, GetAssetQueryResult, BriefStatus, CommentInput } from "@/src/graphql/generated/graphql"
 import { toast } from "sonner"
+import { gql, useMutation } from "@apollo/client"
+
+// Define the AddCommentToAsset mutation
+const ADD_COMMENT_TO_ASSET = gql`
+  mutation AddCommentToAsset($assetId: Int!, $commentInput: CommentInput!) {
+    addCommentToAsset(assetId: $assetId, commentInput: $commentInput) {
+      id
+      text
+      created_at
+      user {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
 
 export interface AssetPreviewModalProps {
   isOpen: boolean;
@@ -76,10 +94,22 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Get asset data using Apollo client
-  const { data, loading: isLoading, error } = useGetAssetQuery({
+  const { data, loading: isLoading, error, refetch } = useGetAssetQuery({
     variables: { getAssetId: assetId || 0 },
     skip: !assetId || !isOpen,
     fetchPolicy: 'network-only'
+  });
+
+  // Add the ADD_COMMENT_TO_ASSET mutation
+  const [addCommentToAsset, { loading: addingComment }] = useMutation(ADD_COMMENT_TO_ASSET, {
+    onCompleted: () => {
+      // Refetch the asset data to get the updated comments
+      refetch();
+      toast.success("Comment added successfully");
+    },
+    onError: (error) => {
+      toast.error(`Failed to add comment: ${error.message}`);
+    }
   });
 
   const asset = data?.getAsset;
@@ -206,6 +236,17 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
         relatedBriefs: asset.briefs?.filter(Boolean).map(brief => ({
           id: brief?.id || 0,
           title: brief?.title || 'Untitled Brief'
+        })) || [],
+        // Include comments
+        comments: asset.comments?.filter(Boolean).map(comment => ({
+          id: String(comment?.id || ''),
+          text: comment?.text || '',
+          user: comment?.user ? {
+            id: String(comment.user.id || ''),
+            name: comment.user.full_name || 'Unknown User',
+            avatar: comment.user.profile_image || undefined
+          } : null,
+          createdAt: comment?.created_at || new Date().toISOString()
         })) || []
       });
       onClose();
@@ -213,9 +254,40 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
   }
 
   // Handle adding a comment
-  const handleAddComment = (comment: string, mentionedUsers: any[] = []) => {
-    // In a real app, you would update the asset with the new comment
-    console.log(`Adding comment: ${comment}`, mentionedUsers)
+  const handleAddComment = async (text: string, mentionedUsers: {id: string, name: string}[] = []) => {
+    if (!assetId) {
+      toast.error("Cannot add comment - asset ID is not available");
+      return;
+    }
+    
+    if (!text.trim()) {
+      toast.error("Comment text cannot be empty");
+      return;
+    }
+    
+    try {
+      // Hard-coded user ID for demo purposes - in production, this should come from auth context
+      const userId = 2;
+      
+      // Create a comment input object
+      const commentInput: CommentInput = {
+        text: text.trim(),
+        user_id: userId
+      };
+      
+      // Call the mutation
+      await addCommentToAsset({
+        variables: {
+          assetId: Number(assetId),
+          commentInput
+        }
+      });
+      
+      // The success and error cases are handled by the onCompleted and onError options
+    } catch (error: any) {
+      console.error("Error adding comment:", error);
+      toast.error("Failed to add comment. Please try again.");
+    }
   }
 
   const getFileType = (fileType?: string | null) => {
@@ -526,6 +598,9 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
                     >
                       <MessageSquare className="h-4 w-4" />
                       Comments
+                      {asset?.comments && asset.comments.length > 0 && (
+                        <Badge variant="secondary" className="ml-1">{asset.comments.length}</Badge>
+                      )}
                     </button>
                   </div>
 
@@ -625,7 +700,21 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
                   {/* Comments section */}
                   {activeSection === "comments" && (
                     <div className="space-y-4">
-                      <EnhancedCommentSection comments={asset?.comments?.filter(comment => !!comment) || []} onAddComment={handleAddComment} />
+                      <EnhancedCommentSection 
+                        comments={asset?.comments?.filter(comment => !!comment).map(comment => ({
+                          id: String(comment?.id || ''),
+                          text: comment?.text || '',
+                          user: comment?.user ? {
+                            id: String(comment.user.id || ''),
+                            name: comment.user.full_name || 'Unknown User',
+                            avatar: comment.user.profile_image || undefined
+                          } : null,
+                          createdAt: comment?.created_at || new Date().toISOString()
+                        })) || []} 
+                        onAddComment={handleAddComment}
+                        isLoading={addingComment}
+                        placeholder="Add a comment to this asset..."
+                      />
                     </div>
                   )}
                 </div>

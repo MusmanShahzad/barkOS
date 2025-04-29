@@ -199,14 +199,30 @@ type Comment {
   briefs: [Brief]
   created_at: String!
   id: Int!
+  mentioned_users: [User]
   text: String
   user: User
   user_id: Int
 }
 
 input CommentInput {
+  mentioned_user_ids: [Int]
   text: String
   user_id: Int
+}
+
+type CommentMention {
+  comment: Comment
+  comment_id: Int!
+  created_at: String!
+  id: Int!
+  user: User
+  user_id: Int!
+}
+
+input CommentMentionInput {
+  comment_id: Int!
+  user_id: Int!
 }
 
 input DateRangeInput {
@@ -238,6 +254,9 @@ type MediaUploadResponse {
 }
 
 type Mutation {
+  addCommentToAsset(assetId: Int!, commentInput: CommentInput!): Comment
+  addCommentToBrief(briefId: Int!, commentInput: CommentInput!): Comment
+  addMentionToComment(input: CommentMentionInput!): CommentMention
   addUserToBrief(briefId: Int!, userId: Int!): Boolean
   createAsset(input: AssetInput!): Asset
   createAssetComment(input: AssetCommentInput!): AssetComment
@@ -265,6 +284,7 @@ type Mutation {
   deleteProduct(id: Int!): Boolean
   deleteTag(id: Int!): Boolean
   deleteUser(id: Int!): Boolean
+  removeMentionFromComment(commentId: Int!, userId: Int!): Boolean
   removeUserFromBrief(briefId: Int!, userId: Int!): Boolean
   safeUpdateBrief(id: Int!, input: SafeBriefUpdateInput!): Brief
   updateAsset(id: Int!, input: AssetUpdateInput!): Asset
@@ -366,6 +386,7 @@ type Query {
     sort: [BriefSort]
   ): PaginatedBriefs!
   getComment(id: Int!): Comment
+  getCommentMentions(commentId: Int!): [CommentMention]
   getComments: [Comment]
   getMedia(id: Int!): Media
   getMedias: [Media]

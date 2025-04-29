@@ -9,16 +9,40 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 
-export default function EnhancedCommentSection({ comments, onAddComment }) {
+interface User {
+  id: string
+  name: string
+  avatar?: string
+}
+
+interface Comment {
+  id: string
+  text: string
+  user: User
+  createdAt: string
+}
+
+interface EnhancedCommentSectionProps {
+  comments: Comment[]
+  onAddComment: (text: string, mentionedUsers: User[]) => void
+  isLoading?: boolean
+  placeholder?: string
+}
+
+export default function EnhancedCommentSection({ 
+  comments, 
+  onAddComment, 
+  isLoading = false,
+  placeholder = "Add a comment... (use @ to mention someone)"
+}: EnhancedCommentSectionProps) {
   const [newComment, setNewComment] = useState("")
   const [mentionPopoverOpen, setMentionPopoverOpen] = useState(false)
   const [mentionSearch, setMentionSearch] = useState("")
   const [mentionStartIndex, setMentionStartIndex] = useState(-1)
-  const [mentionedUsers, setMentionedUsers] = useState([])
-  const textareaRef = useRef(null)
+  const [mentionedUsers, setMentionedUsers] = useState<User[]>([])
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
+  const handleAddComment = () => {
     if (newComment.trim()) {
       onAddComment(newComment, mentionedUsers)
       setNewComment("")
@@ -26,7 +50,13 @@ export default function EnhancedCommentSection({ comments, onAddComment }) {
     }
   }
 
-  const handleTextareaChange = (e) => {
+  // Keep this for handling Enter key in the future if needed
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setNewComment(value)
 
@@ -42,7 +72,7 @@ export default function EnhancedCommentSection({ comments, onAddComment }) {
     }
   }
 
-  const handleMentionSelect = (user) => {
+  const handleMentionSelect = (user: User) => {
     // Replace the @mention text with the selected user
     const beforeMention = newComment.substring(0, mentionStartIndex)
     const afterMention = newComment.substring(mentionStartIndex + 1 + mentionSearch.length)
@@ -66,7 +96,7 @@ export default function EnhancedCommentSection({ comments, onAddComment }) {
 
   const filteredUsers = mockUsers.filter((user) => user.name.toLowerCase().includes(mentionSearch.toLowerCase()))
 
-  const formatDate = (date) => {
+  const formatDate = (date: string) => {
     const d = new Date(date)
     return d.toLocaleString("en-US", {
       month: "short",
@@ -78,10 +108,10 @@ export default function EnhancedCommentSection({ comments, onAddComment }) {
   }
 
   // Function to render comments with mentions highlighted
-  const renderCommentWithMentions = (text) => {
+  const renderCommentWithMentions = (text: string) => {
     // Simple regex to find @mentions
     const mentionRegex = /@(\w+)/g
-    const parts = []
+    const parts: (string | JSX.Element)[] = []
     let lastIndex = 0
     let match
 
@@ -113,51 +143,35 @@ export default function EnhancedCommentSection({ comments, onAddComment }) {
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleSubmit} className="flex gap-4">
+      <div className="flex gap-4">
         <Avatar className="h-10 w-10">
           <AvatarImage src={mockUsers[0].avatar || "/placeholder.svg"} alt={mockUsers[0].name} />
           <AvatarFallback>{mockUsers[0].name.charAt(0)}</AvatarFallback>
         </Avatar>
         <div className="flex-1 space-y-2">
-          <Popover open={mentionPopoverOpen && filteredUsers.length > 0} onOpenChange={setMentionPopoverOpen}>
-            <PopoverTrigger asChild>
-              <Textarea
+        <Textarea
                 ref={textareaRef}
-                placeholder="Add a comment... (use @ to mention someone)"
+                placeholder={placeholder}
                 value={newComment}
                 onChange={handleTextareaChange}
                 className="min-h-[80px]"
               />
-            </PopoverTrigger>
-            <PopoverContent className="p-0 w-[300px]" align="start">
-              <Command>
-                <CommandInput placeholder="Search people..." />
-                <CommandList>
-                  <CommandEmpty>No people found</CommandEmpty>
-                  <CommandGroup>
-                    {filteredUsers.map((user) => (
-                      <CommandItem
-                        key={user.id}
-                        onSelect={() => handleMentionSelect(user)}
-                        className="flex items-center gap-2"
-                      >
-                        <Avatar className="h-6 w-6">
-                          <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
-                          <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <span>{user.name}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-          <Button type="submit" disabled={!newComment.trim()}>
-            Add Comment
+          <Button 
+            type="button" 
+            onClick={handleAddComment}
+            disabled={!newComment.trim() || isLoading}
+          >
+            {isLoading ? (
+              <>
+                <div className="mr-1 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                Posting...
+              </>
+            ) : (
+              'Add Comment'
+            )}
           </Button>
         </div>
-      </form>
+      </div>
 
       <div className="space-y-4">
         {comments?.length === 0 ? (
@@ -167,7 +181,7 @@ export default function EnhancedCommentSection({ comments, onAddComment }) {
             <div key={comment.id} className="flex gap-4">
               <Avatar className="h-10 w-10">
                 <AvatarImage src={comment.user.avatar || "/placeholder.svg"} alt={comment.user.name} />
-                <AvatarFallback>{comment.user.name.charAt(0)}</AvatarFallback>
+                <AvatarFallback>{comment.user.name?.charAt(0)}</AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <div className="flex items-center gap-2">

@@ -1,0 +1,17 @@
+mutation AddCommentToBrief($briefId: Int!, $commentInput: CommentInput!) {
+  addCommentToBrief(briefId: $briefId, commentInput: $commentInput) {
+    id
+    text
+    created_at
+    user {
+      id
+      full_name
+      profile_image
+    }
+    mentioned_users {
+      id
+      full_name
+      profile_image
+    }
+  }
+} 

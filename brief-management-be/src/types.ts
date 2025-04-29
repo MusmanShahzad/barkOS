@@ -77,6 +77,7 @@ export interface Comment {
   text?: string;
   user_id?: number;
   created_at: string;
+  mentioned_user_ids?: number[];
 }
 
 export interface Tag {

@@ -30,6 +30,9 @@ import {
   Tag, 
   Asset as APIAsset, 
   Asset,
+  Comment as GraphQLComment,
+  CommentInput,
+  User,
   useGetBriefDropDownsQuery,
   useCreateBriefMutation,
   useUpdateBriefMutation
@@ -40,6 +43,29 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { toast } from "sonner"
 import { BriefTokenizeInput } from "@/components/brief-tokenize-input"
+import { useMutation } from "@apollo/client"
+import { gql } from "@apollo/client"
+
+// Define the AddCommentToBrief mutation
+const ADD_COMMENT_TO_BRIEF = gql`
+  mutation AddCommentToBrief($briefId: Int!, $commentInput: CommentInput!) {
+    addCommentToBrief(briefId: $briefId, commentInput: $commentInput) {
+      id
+      text
+      created_at
+      user {
+        id
+        full_name
+        profile_image
+      }
+      mentioned_users {
+        id
+        full_name
+        profile_image
+      }
+    }
+  }
+`;
 
 // Define BriefStatus enum since it's not available in the generated types
 export enum BriefStatus {
@@ -69,7 +95,7 @@ interface BriefFormData {
   tagIds: string[];
   assetIds: string[];
   relatedBriefIds: string[];
-  comments: Array<Maybe<Comment>>;
+  comments: Array<Maybe<GraphQLComment>>;
 }
 
 // Helper function to convert form data to BriefInput
@@ -128,12 +154,18 @@ export interface IBriefModalProps {
   brief: Brief | null;
 }
 
+// Comment interface to match with EnhancedCommentSection props
+interface CommentUser {
+  id: string;
+  name: string;
+  avatar?: string;
+}
+
 interface Comment {
   id: string;
   text: string;
-  user: any; // Replace with proper user type
-  createdAt: Date;
-  mentions: any[]; // Replace with proper mention type
+  user: CommentUser; 
+  createdAt: string;
 }
 
 // Debounce utility function
@@ -175,6 +207,8 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
   const { data: dropDownData, loading: dropDownLoading } = useGetBriefDropDownsQuery();
   const [createBrief, { loading: creatingBrief }] = useCreateBriefMutation();
   const [updateBrief, { loading: updatingBrief }] = useUpdateBriefMutation();
+  // Use the ADD_COMMENT_TO_BRIEF mutation
+  const [addCommentToBrief, { loading: addingComment }] = useMutation(ADD_COMMENT_TO_BRIEF);
 
   const [selectedAssets, setSelectedAssets] = useState<IAsset[]>([]);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
@@ -183,6 +217,8 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
   const [previewAssetId, setPreviewAssetId] = useState<number | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // Track comments in local state
+  const [comments, setComments] = useState<Comment[]>([]);
   
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -295,9 +331,9 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
           url: apiAsset.media?.url || '',
           fileType: apiAsset.media?.file_type || '',
           thumbnail: apiAsset.thumbnail ? {
-            id: apiAsset.thumbnail.id,
-            url: apiAsset.thumbnail.url,
-            file_type: apiAsset.thumbnail.file_type
+            id: Number(apiAsset.thumbnail.id),
+            url: String(apiAsset.thumbnail.url || ''),
+            file_type: String(apiAsset.thumbnail.file_type || '')
           } : undefined,
           tags: Array.from(apiAsset.tags || []).map(tag => ({
             id: Number(tag?.id || 0),
@@ -349,23 +385,93 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
     onClose();
   };
 
-  // Reset form when brief changes
+  // Initialize form with brief data if editing an existing brief
   useEffect(() => {
-    if (isOpen && brief) {
+    if (brief && isOpen) {
+      setIsLoading(true);
+      
+      // Convert API data types to form value types
       reset({
-        title: brief?.title || "",
-        product_id: brief?.product?.id?.toString() || "",
-        objective_id: brief?.objective?.id?.toString() || "",
-        about_target_audience: brief?.about_target_audience || "",
-        about_hook: brief?.about_hook || "",
-        go_live_on: brief?.go_live_on || new Date().toISOString(),
-        status: brief?.status as BriefStatus || BriefStatus.Draft,
-        userIds: brief?.users?.map(user => user?.id?.toString() || "").filter(Boolean) || [],
-        tagIds: brief?.tags?.map(tag => tag?.id?.toString() || "").filter(Boolean) || [],
-        assetIds: brief?.assets?.map(asset => asset?.id?.toString() || "").filter(Boolean) || [],
-        relatedBriefIds: brief?.related_briefs?.map(brief => brief?.id?.toString() || "").filter(Boolean) || []
+        title: brief.title || "",
+        product_id: brief.product?.id ? String(brief.product.id) : "",
+        objective_id: brief.objective?.id ? String(brief.objective.id) : "",
+        about_target_audience: brief.about_target_audience || "",
+        about_hook: brief.about_hook || "",
+        go_live_on: brief.go_live_on || new Date().toISOString(),
+        status: (brief.status as BriefStatus) || BriefStatus.Draft,
+        userIds: brief.users?.map(user => String(user?.id)) || [],
+        tagIds: brief.tags?.map(tag => String(tag?.id)) || [],
+        assetIds: brief.assets?.map(asset => String(asset?.id)) || [],
+        relatedBriefIds: brief.related_briefs?.map(rb => String(rb?.id)) || []
       });
-      setAutoSaveStatus('idle');
+      
+      // Convert API assets to the format needed for display
+      const apiAssets = brief.assets || [];
+      const formattedAssets: IAsset[] = [];
+      
+      for (const apiAsset of apiAssets) {
+        if (apiAsset) {
+          // Extract required properties with proper fallbacks
+          const id = Number(apiAsset.id);
+          const media_id = Number(apiAsset.media_id);
+          const created_at = apiAsset.created_at || new Date().toISOString();
+          
+          // Handle thumbnail first to avoid TypeScript errors
+          let thumbnail: {id: number, url: string, file_type: string} | undefined = undefined;
+          
+          if (apiAsset.thumbnail) {
+            // Ensure we have string values for the thumbnail properties
+            thumbnail = {
+              id: Number(apiAsset.thumbnail.id),
+              url: apiAsset.thumbnail.url ? String(apiAsset.thumbnail.url) : '',
+              file_type: apiAsset.thumbnail.file_type ? String(apiAsset.thumbnail.file_type) : ''
+            };
+          }
+          
+          // Create formatted asset object
+          formattedAssets.push({
+            id,
+            media_id,
+            created_at,
+            name: apiAsset.name || '',
+            description: apiAsset.description || '',
+            fileType: apiAsset.media?.file_type || '',
+            url: apiAsset.media?.url || '',
+            thumbnail,
+            // Convert tags to proper format with id and name
+            tags: apiAsset.tags?.map(tag => ({
+              id: Number(tag?.id || 0),
+              name: String(tag?.name || '')
+            })) || [],
+            // Add any other required properties for IAsset
+            briefs: [],
+            relatedBriefs: []
+          });
+        }
+      }
+      
+      setSelectedAssets(formattedAssets);
+      
+      // Load comments from the brief
+      if (brief.comments && brief.comments.length > 0) {
+        const briefComments = brief.comments
+          .filter((comment): comment is NonNullable<typeof comment> => comment !== null)
+          .map(comment => ({
+            id: String(comment.id),
+            text: comment.text || '',
+            user: {
+              id: String(comment.user?.id || 0),
+              name: comment.user?.full_name || 'Unknown User',
+              avatar: comment.user?.profile_image || undefined
+            },
+            createdAt: comment.created_at || new Date().toISOString()
+          }));
+        setComments(briefComments);
+      } else {
+        setComments([]);
+      }
+      
+      setIsLoading(false);
     }
   }, [brief, isOpen, reset]);
 
@@ -638,14 +744,72 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
     };
   }, [isOpen, reset]);
 
-  const handleAddComment = (text: string, mentionedUsers: any[] = []) => {
-    const newComment = {
-      id: Date.now().toString(),
-      text,
-      user: mockUsers[0],
-      createdAt: new Date().toISOString()
-    };
-    // Handle comment addition logic here
+  const handleAddComment = async (text: string, mentionedUsers: {id: string, name: string}[] = []) => {
+    // Only allow adding comments in edit mode (when brief exists)
+    if (!brief?.id) {
+      toast.error("Comments can only be added to saved briefs");
+      return;
+    }
+    
+    if (!text.trim()) {
+      toast.error("Comment text cannot be empty");
+      return;
+    }
+    
+    try {
+      // Hard-coded user ID for demo purposes - in production, this should come from auth
+      const userId = 2;
+      
+      // Create a comment input object
+      const commentInput: CommentInput = {
+        text,
+        user_id: userId
+      };
+      
+      // Call the mutation
+      const response = await addCommentToBrief({
+        variables: {
+          briefId: Number(brief.id),
+          commentInput
+        }
+      });
+      
+      if (response.data?.addCommentToBrief) {
+        const newComment = response.data.addCommentToBrief;
+        
+        // Add the new comment to the state
+        setComments(prevComments => [
+          ...prevComments,
+          {
+            id: String(newComment.id),
+            text: newComment.text || '',
+            user: {
+              id: String(newComment.user?.id || 0),
+              name: newComment.user?.full_name || 'Unknown User',
+              avatar: newComment.user?.profile_image || undefined
+            },
+            createdAt: newComment.created_at || new Date().toISOString()
+          }
+        ]);
+        
+        toast.success("Comment added successfully");
+      } else {
+        throw new Error("Failed to add comment. Server returned no data.");
+      }
+    } catch (error: any) {
+      console.error("Error adding comment:", error);
+      let errorMessage = "Failed to add comment";
+      
+      if (error.message) {
+        errorMessage += `: ${error.message}`;
+      }
+      
+      if (error.networkError) {
+        errorMessage += " - Network error. Please check your connection.";
+      }
+      
+      toast.error(errorMessage);
+    }
   };
 
   const getAssetPreview = (asset: IAsset) => {
@@ -1034,12 +1198,40 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
 
             {/* Comments Section */}
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Comments</h3>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                  <h3 className="text-sm font-medium">Comments</h3>
+                </div>
+                {brief && comments.length > 0 && (
+                  <Badge variant="outline">{comments.length}</Badge>
+                )}
               </div>
               <Separator />
-              <EnhancedCommentSection comments={brief?.comments || []} onAddComment={handleAddComment} />
+              {/* Only show comments section when in edit mode (when a brief already exists) */}
+              {brief ? (
+                <div className="mt-4">
+                  <EnhancedCommentSection 
+                    comments={comments.map(comment => ({
+                      id: comment.id,
+                      text: comment.text,
+                      user: {
+                        id: comment.user.id || '0',
+                        name: comment.user.name || 'Unknown User',
+                        avatar: comment.user.avatar
+                      },
+                      createdAt: comment.createdAt
+                    }))} 
+                    onAddComment={handleAddComment}
+                    isLoading={addingComment}
+                    placeholder="Add a comment to this brief..."
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
+                  <p>Comments will be available after creating the brief</p>
+                </div>
+              )}
             </div>
           </form>
         )}
