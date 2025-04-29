@@ -42,6 +42,7 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "latest",
+    "@rajesh896/video-thumbnails-generator": "^2.3.9",
     "@react-spring/web": "latest",
     "@tanstack/react-virtual": "^3.13.6",
     "@visx/axis": "latest",

@@ -10,8 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileIcon, Grid, List, MoreHorizontal, Upload, Search, ArrowUpDown, Loader2 } from "lucide-react"
 import { formatDate, formatFileSize } from "@/lib/utils"
-import { AssetModal } from "@/components/asset-modal"
-import { AssetUpdateModal } from "@/components/asset-update-modal"
+import { AssetModal, IAsset } from "@/components/asset-modal"
 import AssetPreviewModal from "@/components/asset-preview-modal"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
@@ -146,26 +145,6 @@ interface AssetFilters {
   thumbnailMediaId?: number;
 }
 
-interface DisplayAsset {
-  id: number;
-  name: string | null;
-  description: string | null;
-  created_at: string;
-  media?: {
-    url: string | null;
-    type: string | null;
-    id: number;
-  } | null;
-  thumbnail?: {
-    url: string | null;
-    id: number;
-  } | null;
-  tags?: Array<{
-    id: number;
-    name: string;
-  }> | null;
-}
-
 export default function AssetList({ className }: AssetListProps) {
   const { toast } = useToast()
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
@@ -175,7 +154,7 @@ export default function AssetList({ className }: AssetListProps) {
   const [pageSize] = useState(20)
   const [sortField, setSortField] = useState<LocalAssetSortField>("CREATED_AT")
   const [sortOrder, setSortOrder] = useState<LocalSortOrder>("DESC")
-  const [loadedAssets, setLoadedAssets] = useState<DisplayAsset[]>([])
+  const [loadedAssets, setLoadedAssets] = useState<IAsset[]>([])
   const loadMoreRef = useRef<HTMLDivElement>(null)
   
   // Modal states
@@ -183,7 +162,7 @@ export default function AssetList({ className }: AssetListProps) {
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null)
-  const [selectedAsset, setSelectedAsset] = useState<DisplayAsset | null>(null)
+  const [selectedAsset, setSelectedAsset] = useState<IAsset | null>(null)
 
   const { data, loading: isLoading, refetch } = useGetAssetsQuery({
     variables: {
@@ -209,23 +188,32 @@ export default function AssetList({ className }: AssetListProps) {
       .filter((asset): asset is NonNullable<typeof asset> => asset !== null)
       .map(asset => ({
         id: asset.id,
-        name: asset.name || null,
-        description: asset.description || null,
-        created_at: asset.created_at,
-        media: asset.media ? {
-          id: asset.media.id,
-          url: asset.media.url || null,
-          type: asset.media.file_type || null
-        } : null,
+        name: asset.name || "",
+        description: asset.description || "",
+        media_id: asset.media?.id || 0,
+        thumbnail_media_id: asset.thumbnail?.id || null,
         thumbnail: asset.thumbnail ? {
           id: asset.thumbnail.id,
-          url: asset.thumbnail.url || null
-        } : null,
+          url: asset.thumbnail.url,
+          file_type: asset.thumbnail.file_type
+        } : undefined,
+        url: asset.media?.url || "",
+        fileType: asset.media?.file_type || "",
         tags: asset.tags?.map((tag: { id: number; name: string | null }) => tag ? {
           id: tag.id,
           name: tag.name || ''
-        } : null).filter((tag: any): tag is { id: number; name: string } => tag !== null) || null
-      }));
+        } : null).filter((tag: any): tag is { id: number; name: string } => tag !== null) || [],
+        briefs: asset.briefs?.map((brief: { id: number; title: string | null }) => brief ? {
+          id: brief.id,
+          title: brief.title || ''
+        } : null).filter((brief: any): brief is { id: number; title: string } => brief !== null) || [],
+        relatedBriefs: asset.briefs?.map((brief: { id: number; title: string | null }) => brief ? {
+          id: brief.id,
+          title: brief.title || ''
+        } : null).filter((brief: any): brief is { id: number; title: string } => brief !== null) || [],
+        created_at: asset.created_at || "",
+        updated_at: asset.updated_at || asset.created_at || ""
+      } as IAsset));
   }, []);
 
   useEffect(() => {
@@ -320,6 +308,7 @@ export default function AssetList({ className }: AssetListProps) {
   const handleUpdateAsset = (assetId: number) => {
     setSelectedAssetId(assetId)
     setIsUpdateModalOpen(true)
+    setIsCreateModalOpen(true)
   }
 
   const handlePreviewAsset = (assetId: number) => {
@@ -357,14 +346,13 @@ export default function AssetList({ className }: AssetListProps) {
     </div>
   )
 
-  const getAssetPreview = (asset: DisplayAsset) => {
-    if (!asset?.media?.type) return null;
+  const getAssetPreview = (asset: IAsset) => {
+    if (!asset?.fileType) return null;
 
-    if (asset.media.type.startsWith("image/")) {
-      return asset.media.url;
-    } else if (asset.media.type.startsWith("video/")) {
-    console.log(asset)
-      return asset.thumbnail?.url || null;
+    if (asset.fileType.startsWith("image/")) {
+      return asset.url;
+    } else if (asset.fileType.startsWith("video/")) {
+      return asset.thumbnail ? asset.thumbnail.url : null;
     }
     return null;
   };
@@ -391,7 +379,7 @@ export default function AssetList({ className }: AssetListProps) {
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {assets.map((asset: DisplayAsset) => (
+          {assets.map((asset: IAsset) => (
             <Card
               key={asset?.id}
               className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
@@ -410,7 +398,7 @@ export default function AssetList({ className }: AssetListProps) {
                     <FileIcon className="h-12 w-12 text-muted-foreground" />
                   </div>
                 )}
-                {asset?.media?.type?.startsWith("video/") && (
+                {asset?.fileType?.startsWith("video/") && (
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                     <svg className="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M8 5v14l11-7z" />
@@ -433,7 +421,6 @@ export default function AssetList({ className }: AssetListProps) {
                           e.stopPropagation()
                           setSelectedAsset(asset)
                           handleUpdateAsset(asset?.id || 0)
-                          setIsCreateModalOpen(true);
                         }}
                       >
                         Edit
@@ -465,6 +452,23 @@ export default function AssetList({ className }: AssetListProps) {
                     </Badge>
                   )}
                 </div>
+                {asset?.briefs && asset.briefs.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs text-muted-foreground mb-1">Linked Briefs:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {asset.briefs.slice(0, 2).map((brief) => (
+                        <Badge key={brief?.id} variant="outline" className="text-xs">
+                          {brief?.title || `Brief ${brief?.id}`}
+                        </Badge>
+                      ))}
+                      {(asset?.briefs?.length || 0) > 2 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{(asset?.briefs?.length || 0) - 2}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -526,7 +530,7 @@ export default function AssetList({ className }: AssetListProps) {
                 </tr>
               </thead>
               <tbody className="[&_tr:last-child]:border-0">
-                {assets.map((asset: DisplayAsset) => (
+                {assets.map((asset: IAsset) => (
                   <tr key={asset?.id} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
                     <td className="p-4 align-middle">
                       <div className="flex items-center gap-2">
@@ -542,7 +546,7 @@ export default function AssetList({ className }: AssetListProps) {
                           ) : (
                             <FileIcon className="h-4 w-4" />
                           )}
-                          {asset?.media?.type?.startsWith("video/") && (
+                          {asset?.fileType?.startsWith("video/") && (
                             <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded">
                               <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M8 5v14l11-7z" />
@@ -554,7 +558,7 @@ export default function AssetList({ className }: AssetListProps) {
                       </div>
                     </td>
                     <td className="p-4 align-middle">
-                      <Badge variant="outline">{asset?.media?.type?.split("/")[1] || "unknown"}</Badge>
+                      <Badge variant="outline">{asset?.fileType?.split("/")[1] || "unknown"}</Badge>
                     </td>
                     <td className="p-4 align-middle">
                       {formatDate(asset?.created_at || "")}
@@ -645,18 +649,45 @@ export default function AssetList({ className }: AssetListProps) {
       </div>
 
       <div className="flex items-center justify-between mb-4">
-        <Tabs value={viewMode} onValueChange={(value: string) => handleViewModeChange(value as ViewMode)}>
-          <TabsList>
-            <TabsTrigger value="grid">
-              <Grid className="h-4 w-4 mr-2" />
-              Grid
-            </TabsTrigger>
-            <TabsTrigger value="list">
-              <List className="h-4 w-4 mr-2" />
-              List
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-2">
+          <Tabs value={viewMode} onValueChange={(value: string) => handleViewModeChange(value as ViewMode)}>
+            <TabsList>
+              <TabsTrigger value="grid">
+                <Grid className="h-4 w-4 mr-2" />
+                Grid
+              </TabsTrigger>
+              <TabsTrigger value="list">
+                <List className="h-4 w-4 mr-2" />
+                List
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div className="text-sm ml-4">
+            <span className="font-medium">Sort by: </span>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className={`${sortField === 'NAME' ? 'font-medium underline' : ''}`}
+              onClick={() => handleSort('NAME')}
+            >
+              Name
+              {sortField === 'NAME' && (
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              )}
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className={`${sortField === 'CREATED_AT' ? 'font-medium underline' : ''}`}
+              onClick={() => handleSort('CREATED_AT')}
+            >
+              Created
+              {sortField === 'CREATED_AT' && (
+                <ArrowUpDown className="ml-1 h-3 w-3" />
+              )}
+            </Button>
+          </div>
+        </div>
         <div className="text-sm text-muted-foreground">
           {isLoading && currentPage === 1 ? "Loading..." : `${totalCount} asset${totalCount !== 1 ? "s" : ""}`}
         </div>
@@ -671,19 +702,7 @@ export default function AssetList({ className }: AssetListProps) {
           setSelectedAsset(null)
           setSelectedAssetId(null)
         }}
-        asset={{
-          id: selectedAsset?.id ?? 0,
-          name: selectedAsset?.name ?? "",
-          description: selectedAsset?.description ?? "",
-          url: selectedAsset?.media?.url ?? "",
-          fileType: selectedAsset?.media?.type ?? "",
-          media_id: selectedAsset?.media?.id ?? 0,
-          thumbnail_media_id: selectedAsset?.thumbnail?.id ?? 0,
-          media: selectedAsset?.media as Media | null,
-          thumbnail: selectedAsset?.thumbnail as Media | null,
-          created_at: selectedAsset?.created_at ?? new Date().toISOString(),
-          tags: selectedAsset?.tags || []
-        }}
+        asset={selectedAsset}
         onSave={async (asset) => {
           try {
             setIsCreateModalOpen(false);
@@ -702,20 +721,6 @@ export default function AssetList({ className }: AssetListProps) {
           }
         }}
       />
-
-      {/* <AssetUpdateModal
-        assetId={selectedAssetId}
-        isOpen={isUpdateModalOpen}
-        onClose={() => {
-          setIsUpdateModalOpen(false)
-          setSelectedAssetId(null)
-        }}
-        onUpdate={() => {
-          setIsUpdateModalOpen(false)
-          setSelectedAssetId(null)
-          refetch()
-        }}
-      /> */}
 
       <AssetPreviewModal
         assetId={selectedAssetId}

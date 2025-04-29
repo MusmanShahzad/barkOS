@@ -14,22 +14,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { VirtualList } from "@/components/virtual-list"
 import AssetPreviewModal from "@/components/asset-preview-modal"
 import { useGetAssetsQuery, Asset, Maybe } from "@/src/graphql/generated/graphql"
+import { IAsset } from "@/components/asset-modal"
 
-// Define interfaces for component props and assets
-export interface AssetDisplayType {
-  id: number;
-  name: string;
-  description?: string;
-  type: string;
-  size: number;
-  url: string;
-  thumbnail?: string | null;
-  tags?: string[];
-}
-
+// Define interfaces for component props
 interface QuickAssetSelectorProps {
-  selectedAssets: AssetDisplayType[];
-  onSelect: (assets: AssetDisplayType[]) => void;
+  selectedAssets: IAsset[];
+  onSelect: (assets: IAsset[]) => void;
   onAddNew: () => void;
 }
 
@@ -40,7 +30,7 @@ export function QuickAssetSelector({
 }: QuickAssetSelectorProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [viewMode, setViewMode] = useState("grid")
-  const [localSelectedAssets, setLocalSelectedAssets] = useState<AssetDisplayType[]>(selectedAssets)
+  const [localSelectedAssets, setLocalSelectedAssets] = useState<IAsset[]>(selectedAssets)
   const [isOpen, setIsOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [previewAsset, setPreviewAsset] = useState<number | null>(null)
@@ -72,33 +62,46 @@ export function QuickAssetSelector({
     setLocalSelectedAssets(selectedAssets)
   }, [selectedAssets])
 
-  // Convert API assets to display format
-  const mapAssetsFromApi = (assets: Maybe<Asset>[]): AssetDisplayType[] => {
+  // Convert API assets to IAsset format
+  const mapAssetsFromApi = (assets: readonly Maybe<Asset>[]): IAsset[] => {
     return assets
       .filter((asset): asset is Asset => asset !== null)
-      .map((asset): AssetDisplayType => {
+      .map((asset): IAsset => {
         return {
           id: Number(asset.id),
           name: asset.name || `Asset ${asset.id}`,
-          description: asset.description || undefined,
-          // Determine type from media file_type
-          type: asset.media?.file_type?.split('/')[0] || "file",
-          // Use placeholder size if not available
-          size: 0,
-          // Get URL from media
+          description: asset.description || "",
+          media_id: Number(asset.media?.id || 0),
+          thumbnail_media_id: asset.thumbnail?.id || null,
+          created_at: asset.created_at || "",
           url: asset.media?.url || "/placeholder.svg",
-          // Get thumbnail URL if available
-          thumbnail: asset.thumbnail?.url || null,
-          // Get tags
-          tags: asset.tags?.filter(Boolean).map(tag => tag?.name || '') || []
+          fileType: asset.media?.file_type || "application/octet-stream",
+          thumbnail: asset.thumbnail ? {
+            id: asset.thumbnail.id,
+            url: asset.thumbnail.url,
+            file_type: asset.thumbnail.file_type
+          } : undefined,
+          tags: asset.tags?.filter(Boolean).map(tag => ({
+            id: Number(tag?.id || 0),
+            name: tag?.name || ''
+          })) || [],
+          briefs: asset.briefs?.filter(Boolean).map(brief => ({
+            id: Number(brief?.id || 0),
+            title: brief?.title || ''
+          })) || [],
+          relatedBriefs: asset.briefs?.filter(Boolean).map(brief => ({
+            id: Number(brief?.id || 0),
+            title: brief?.title || ''
+          })) || [],
+          updated_at: asset.created_at || ""
         }
       })
   }
 
   // Available assets data
-  const availableAssets = mapAssetsFromApi(data?.getAssets.assets || [])
-  const hasMoreAssets = data?.getAssets.hasNextPage || false
-  const totalAssets = data?.getAssets.totalCount || 0
+  const availableAssets = mapAssetsFromApi(data?.getAssets?.assets || [])
+  const hasMoreAssets = data?.getAssets?.hasNextPage || false
+  const totalAssets = data?.getAssets?.totalCount || 0
 
   // Load more assets
   const loadMoreAssets = () => {
@@ -152,6 +155,29 @@ export function QuickAssetSelector({
     onSelect(newSelection)
   }
 
+  // Get the file type for display
+  const getFileType = (asset: IAsset): string => {
+    if (!asset.fileType) return "unknown";
+    return asset.fileType.split('/')[0];
+  }
+
+  // Get preview URL based on asset type
+  const getAssetPreview = (asset: IAsset): string => {
+    if (!asset.fileType) return "/placeholder.svg";
+    
+    if (asset.fileType.startsWith("image/")) {
+      return asset.url || "/placeholder.svg";
+    } else if (asset.fileType.startsWith("video/")) {
+      // Try to get thumbnail directly from the asset
+      if (asset.thumbnail?.url) {
+        return asset.thumbnail.url;
+      }
+      // If no specific thumbnail is available, return a video placeholder
+      return "/placeholder.svg?query=video thumbnail";
+    }
+    return "/placeholder.svg";
+  };
+
   // Open asset preview
   const openAssetPreview = (assetId: number) => {
     setPreviewAsset(assetId)
@@ -159,7 +185,7 @@ export function QuickAssetSelector({
   }
 
   // Render grid item
-  const renderGridItem = (asset: AssetDisplayType) => (
+  const renderGridItem = (asset: IAsset) => (
     <Card
       key={asset.id}
       className={`overflow-hidden cursor-pointer hover:bg-muted transition-colors ${
@@ -167,13 +193,13 @@ export function QuickAssetSelector({
       }`}
     >
       <div className="aspect-square relative bg-muted" onClick={() => openAssetPreview(asset.id)}>
-        {asset.type === "image" ? (
-          <Image src={asset.url || "/placeholder.svg"} alt={asset.name} fill className="object-cover" />
-        ) : asset.type === "video" ? (
+        {asset.fileType?.startsWith("image/") ? (
+          <Image src={asset.url || "/placeholder.svg"} alt={asset.name || ""} fill className="object-cover" />
+        ) : asset.fileType?.startsWith("video/") ? (
           <div className="w-full h-full relative">
             <Image
-              src={asset.thumbnail || "/placeholder.svg?query=video thumbnail"}
-              alt={asset.name}
+              src={getAssetPreview(asset)}
+              alt={asset.name || ""}
               fill
               className="object-cover"
             />
@@ -202,16 +228,16 @@ export function QuickAssetSelector({
         <div className="truncate text-xs font-medium">{asset.name}</div>
         <div className="flex items-center justify-between mt-1 text-[10px] text-muted-foreground">
           <Badge variant="outline" className="text-[10px] h-4 px-1">
-            {asset.type}
+            {getFileType(asset)}
           </Badge>
-          <span>{formatFileSize(asset.size)}</span>
+          <span>{formatFileSize(0)}</span>
         </div>
       </CardContent>
     </Card>
   )
 
   // Render list item
-  const renderListItem = (asset: AssetDisplayType) => (
+  const renderListItem = (asset: IAsset) => (
     <div
       key={asset.id}
       className={`flex items-center p-2 hover:bg-muted cursor-pointer ${
@@ -229,19 +255,19 @@ export function QuickAssetSelector({
       </div>
       <div className="flex-1 flex items-center min-w-0" onClick={() => openAssetPreview(asset.id)}>
         <div className="h-8 w-8 mr-2 rounded overflow-hidden bg-muted flex-shrink-0">
-          {asset.type === "image" ? (
+          {asset.fileType?.startsWith("image/") ? (
             <Image
               src={asset.url || "/placeholder.svg"}
-              alt={asset.name}
+              alt={asset.name || ""}
               width={32}
               height={32}
               className="object-cover h-full w-full"
             />
-          ) : asset.type === "video" ? (
+          ) : asset.fileType?.startsWith("video/") ? (
             <div className="relative h-full w-full">
               <Image
-                src={asset.thumbnail || "/placeholder.svg?query=video thumbnail"}
-                alt={asset.name}
+                src={getAssetPreview(asset)}
+                alt={asset.name || ""}
                 width={32}
                 height={32}
                 className="object-cover h-full w-full"
@@ -258,11 +284,11 @@ export function QuickAssetSelector({
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-xs truncate">{asset.name}</div>
-          <div className="text-[10px] text-muted-foreground">{formatFileSize(asset.size)}</div>
+          <div className="text-[10px] text-muted-foreground">{formatFileSize(0)}</div>
         </div>
       </div>
       <Badge variant="outline" className="ml-2 text-[10px]">
-        {asset.type}
+        {getFileType(asset)}
       </Badge>
     </div>
   )
@@ -359,16 +385,12 @@ export function QuickAssetSelector({
                 hasMore={hasMoreAssets}
                 loadMore={loadMoreAssets}
                 isLoading={loading}
-                emptyMessage={
-                  loading ? (
-                    <div className="flex items-center justify-center">
-                      <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                      <span>Loading assets...</span>
-                    </div>
-                  ) : (
-                    "No assets found"
-                  )
-                }
+                emptyMessage={loading ? (
+                  <div className="flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                    <span>Loading assets...</span>
+                  </div>
+                ) : "No assets found"}
               />
             )}
           </PopoverContent>
@@ -383,21 +405,21 @@ export function QuickAssetSelector({
         <div className="flex flex-wrap gap-1 mt-2">
           {localSelectedAssets.map((asset) => (
             <Badge key={asset.id} variant="secondary" className="flex items-center gap-1 pr-1">
-              {asset.type === "image" ? (
+              {asset.fileType?.startsWith("image/") ? (
                 <div className="w-3 h-3 rounded-full overflow-hidden mr-1">
                   <Image
                     src={asset.url || "/placeholder.svg"}
-                    alt={asset.name}
+                    alt={asset.name || ""}
                     width={12}
                     height={12}
                     className="object-cover"
                   />
                 </div>
-              ) : asset.type === "video" ? (
+              ) : asset.fileType?.startsWith("video/") ? (
                 <div className="w-3 h-3 rounded-full overflow-hidden mr-1 relative">
                   <Image
-                    src={asset.thumbnail || "/placeholder.svg?query=video thumbnail"}
-                    alt={asset.name}
+                    src={getAssetPreview(asset)}
+                    alt={asset.name || ""}
                     width={12}
                     height={12}
                     className="object-cover"

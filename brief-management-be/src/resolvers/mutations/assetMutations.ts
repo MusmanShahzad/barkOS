@@ -62,16 +62,23 @@ export const assetMutations = {
 
         // 3. Assign to briefs if provided
         if (input.relatedBriefIds && input.relatedBriefIds.length > 0) {
-          const briefAssetData = input.relatedBriefIds.map(briefId => ({
-            brief_id: briefId,
-            asset_id: asset.id
-          }));
+          const briefAssetData = input.relatedBriefIds
+            .filter(id => id && typeof id === 'number') // Filter out invalid IDs
+            .map(briefId => ({
+              brief_id: briefId,
+              asset_id: asset.id
+            }));
 
-          const { error: briefAssetError } = await supabase
-            .from('brief_assets')
-            .insert(briefAssetData);
+          if (briefAssetData.length > 0) {
+            const { error: briefAssetError } = await supabase
+              .from('brief_assets')
+              .insert(briefAssetData);
 
-          if (briefAssetError) throw briefAssetError;
+            if (briefAssetError) {
+              console.error('Error adding brief relationships:', briefAssetError, briefAssetData);
+              throw briefAssetError;
+            }
+          }
         }
 
         // Commit transaction
@@ -177,16 +184,23 @@ export const assetMutations = {
 
           // Add new brief-asset relationships
           if (input.relatedBriefIds.length > 0) {
-            const briefAssetData = input.relatedBriefIds.map(briefId => ({
-              brief_id: briefId,
-              asset_id: id
-            }));
+            const briefAssetData = input.relatedBriefIds
+              .filter(id => id && typeof id === 'number') // Filter out invalid IDs
+              .map(briefId => ({
+                brief_id: briefId,
+                asset_id: id
+              }));
 
-            const { error: briefAssetError } = await supabase
-              .from('brief_assets')
-              .insert(briefAssetData);
+            if (briefAssetData.length > 0) {
+              const { error: briefAssetError } = await supabase
+                .from('brief_assets')
+                .insert(briefAssetData);
 
-            if (briefAssetError) throw briefAssetError;
+              if (briefAssetError) {
+                console.error('Error updating brief relationships:', briefAssetError, briefAssetData);
+                throw briefAssetError;
+              }
+            }
           }
         }
 

@@ -168,27 +168,15 @@ const briefFormSchema = z.object({
 
 type BriefFormValues = z.infer<typeof briefFormSchema>;
 
-// Define an interface for our asset that's compatible with both the API asset and our UI needs
-interface AssetDisplay {
-  id: number;
-  name: string;
-  description?: string;
-  media_id: number;
-  thumbnail_media_id?: number | null;
-  created_at: string;
-  type: string;
-  url: string;
-  size: number;
-  thumbnail: string | null;
-  tags: string[];
-}
+// Replace interface AssetDisplay definition with this comment:
+// Using IAsset interface from asset-modal.tsx instead of a custom interface
 
 export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }: IBriefModalProps) {
   const { data: dropDownData, loading: dropDownLoading } = useGetBriefDropDownsQuery();
   const [createBrief, { loading: creatingBrief }] = useCreateBriefMutation();
   const [updateBrief, { loading: updatingBrief }] = useUpdateBriefMutation();
 
-  const [selectedAssets, setSelectedAssets] = useState<AssetDisplay[]>([]);
+  const [selectedAssets, setSelectedAssets] = useState<IAsset[]>([]);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [selectedAssetForModal, setSelectedAssetForModal] = useState<IAsset | undefined>();
   const [isLoading, setIsLoading] = useState(false);
@@ -297,19 +285,33 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
     if (brief?.assets) {
       const validAssets = brief.assets
         .filter((asset): asset is NonNullable<typeof asset> => asset !== null)
-        .map((apiAsset): AssetDisplay => ({
+        .map((apiAsset): IAsset => ({
           id: Number(apiAsset.id),
           name: apiAsset.name || '',
           description: apiAsset.description || '',
           media_id: Number(apiAsset.media_id || 0),
           thumbnail_media_id: apiAsset.thumbnail_media_id,
           created_at: apiAsset.created_at || '',
-          // Get these from media
-          type: apiAsset.media?.file_type?.split('/')[0] || 'file',
           url: apiAsset.media?.url || '',
-          size: 0, // We don't have size in the API
-          thumbnail: apiAsset.thumbnail?.url || null,
-          tags: Array.from(apiAsset.tags || []).map(tag => tag?.name || '')
+          fileType: apiAsset.media?.file_type || '',
+          thumbnail: apiAsset.thumbnail ? {
+            id: apiAsset.thumbnail.id,
+            url: apiAsset.thumbnail.url,
+            file_type: apiAsset.thumbnail.file_type
+          } : undefined,
+          tags: Array.from(apiAsset.tags || []).map(tag => ({
+            id: Number(tag?.id || 0),
+            name: tag?.name || ''
+          })),
+          updated_at: apiAsset.created_at || '',
+          briefs: apiAsset.briefs?.map(brief => ({
+            id: Number(brief?.id || 0),
+            title: brief?.title || ''
+          })) || [],
+          relatedBriefs: apiAsset.briefs?.map(brief => ({
+            id: Number(brief?.id || 0),
+            title: brief?.title || ''
+          })) || []
         }));
       setSelectedAssets(validAssets);
     } else {
@@ -384,9 +386,6 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
         createdAt: brief?.created_at || new Date().toISOString(),
         comments: [] // Don't include comments in the mutation
       });
-
-      // Log the created input to help with debugging
-      console.log('Brief input object:', briefInput);
 
       let result;
       if (brief?.id) {
@@ -520,48 +519,37 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
   };
 
   const handleAssetSuccess = (newAsset: IAsset) => {
-    // Convert IAsset to AssetDisplay type
-    const assetToAdd: AssetDisplay = {
-      id: newAsset.id,
-      name: newAsset.name || '',
-      description: newAsset.description || '',
-      media_id: newAsset.media_id,
-      thumbnail_media_id: newAsset.thumbnail_media_id,
-      created_at: newAsset.created_at || new Date().toISOString(),
-      type: newAsset.fileType.split('/')[0] || 'file',
-      url: newAsset.url,
-      size: 0,
-      thumbnail: null,
-      tags: newAsset.tags?.map(tag => tag.name) || []
-    };
+    // Check if this asset already exists in the selected assets
+    const assetExists = selectedAssets.some(asset => asset.id === newAsset.id);
     
-    setSelectedAssets(prev => [...prev, assetToAdd]);
+    if (assetExists) {
+      // Update the existing asset
+      setSelectedAssets(prev => prev.map(asset => 
+        asset.id === newAsset.id ? newAsset : asset
+      ));
+    } else {
+      // Add the new asset
+      setSelectedAssets(prev => [...prev, newAsset]);
+      
+      // Update form values to include the new asset ID
+      const currentAssetIds = watch('assetIds');
+      if (!currentAssetIds.includes(newAsset.id.toString())) {
+        setValue('assetIds', [...currentAssetIds, newAsset.id.toString()], { shouldDirty: true });
+      }
+    }
+    
+    // Keep the brief modal open, just close the asset modal
     setAssetModalOpen(false);
     setSelectedAssetForModal(undefined);
-    
-    // Update form values
-    setValue('assetIds', [...watch('assetIds'), newAsset.id.toString()], { shouldDirty: true });
   };
 
-  const handleAssetEdit = (asset: AssetDisplay) => {
-    // Convert AssetDisplay to IAsset type
-    const assetForModal: IAsset = {
-      id: asset.id,
-      name: asset.name,
-      description: asset.description || '',
-      media_id: asset.media_id,
-      thumbnail_media_id: asset.thumbnail_media_id,
-      created_at: asset.created_at,
-      url: asset.url,
-      fileType: asset.type === 'image' ? 'image/jpeg' : 
-                asset.type === 'video' ? 'video/mp4' : 
-                'application/octet-stream', // Default MIME type
-      tags: asset.tags.map(name => ({ id: 0, name }))  // We don't have tag IDs from the asset display
-    };
-    
-    setSelectedAssetForModal(assetForModal);
-    setAssetModalOpen(true);
+  const handleAssetEdit = (asset: IAsset) => {
+    // Close the preview modal first
     setIsPreviewOpen(false);
+    
+    // Then open the asset edit modal with the selected asset
+    setSelectedAssetForModal(asset);
+    setAssetModalOpen(true);
   };
 
   // Auto-save status indicator
@@ -660,9 +648,19 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
     // Handle comment addition logic here
   };
 
+  const getAssetPreview = (asset: IAsset) => {
+    if (!asset?.fileType) return null;
+
+    if (asset.fileType?.startsWith("image/")) {
+      return asset.url;
+    } else if (asset.fileType?.startsWith("video/")) {
+      return asset.thumbnail ? asset.thumbnail.url : null;
+    }
+    return null;
+  };
+
   // Function to preview an asset
-  const handlePreviewAsset = (asset: AssetDisplay) => {
-    setSelectedAssetForModal(undefined);
+  const handlePreviewAsset = (asset: IAsset) => {
     setPreviewAssetId(asset.id);
     setIsPreviewOpen(true);
   };
@@ -921,33 +919,10 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
               </div>
 
               <QuickAssetSelector
-                selectedAssets={selectedAssets as any} // Type assertion for now
-                onSelect={(assets: { 
-                  id: number;
-                  name: string;
-                  description?: string;
-                  type: string;
-                  url: string;
-                  size: number;
-                  thumbnail?: string | null;
-                  tags?: string[];
-                }[]) => {
-                  // Convert to our internal asset type
-                  const typedAssets = assets.map(asset => ({
-                    id: asset.id,
-                    name: asset.name,
-                    description: asset.description || '',
-                    media_id: 0, // Not available from AssetDisplayType
-                    created_at: '', // Not available from AssetDisplayType
-                    type: asset.type,
-                    url: asset.url,
-                    size: asset.size,
-                    thumbnail: asset.thumbnail || null,
-                    tags: asset.tags || []
-                  } as AssetDisplay));
-                  
-                  setSelectedAssets(typedAssets);
-                  setValue('assetIds', assets.map(asset => asset.id.toString()), { shouldDirty: true });
+                selectedAssets={selectedAssets as any}
+                onSelect={(assets: any) => {
+                  setSelectedAssets(assets as IAsset[]);
+                  setValue('assetIds', assets.map((asset: any) => asset.id.toString()), { shouldDirty: true });
                 }}
                 onAddNew={() => {
                   setSelectedAssetForModal(undefined)
@@ -964,18 +939,18 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
                         className="aspect-square relative bg-muted cursor-pointer"
                         onClick={() => handlePreviewAsset(asset)}
                       >
-                        {asset.type === "image" ? (
+                        {asset.fileType?.startsWith("image/") ? (
                           <Image
                             src={asset.url || "/placeholder.svg"}
-                            alt={asset.name}
+                            alt={asset.name || ""}
                             fill
                             className="object-cover"
                           />
-                        ) : asset.type === "video" ? (
+                        ) : asset.fileType?.startsWith("video/") ? (
                           <div className="w-full h-full relative">
                             <Image
-                              src={asset.thumbnail || "/placeholder.svg?height=100&width=100&query=video thumbnail"}
-                              alt={asset.name}
+                              src={getAssetPreview(asset) || "/placeholder.svg?height=100&width=100&query=video thumbnail"}
+                              alt={asset.name || ""}
                               fill
                               className="object-cover"
                             />
@@ -1024,9 +999,11 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
                         <div className="truncate text-xs font-medium">{asset.name}</div>
                         <div className="flex items-center justify-between mt-1">
                           <Badge variant="outline" className="text-[10px]">
-                            {asset.type}
+                            {asset.fileType?.split('/')[0] || 'unknown'}
                           </Badge>
-                          <span className="text-[10px] text-muted-foreground">{formatFileSize(asset.size)}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {formatFileSize(0)} {/* We don't have size in IAsset */}
+                          </span>
                         </div>
                       </CardContent>
                     </Card>
@@ -1100,6 +1077,7 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
         asset={selectedAssetForModal || null}
         onSave={async (asset) => {
           await handleAssetSuccess(asset);
+          // Don't close the brief modal, just return a resolved promise
           return Promise.resolve();
         }}
       />
@@ -1109,7 +1087,15 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
         isOpen={isPreviewOpen} 
         onClose={() => setIsPreviewOpen(false)} 
         assetId={previewAssetId} 
-        onEdit={handleAssetEdit}
+        onEdit={(previewAsset) => {
+          // Find the corresponding asset in our selectedAssets array
+          const assetToEdit = selectedAssets.find(asset => asset.id === previewAsset.id);
+          if (assetToEdit) {
+            handleAssetEdit(assetToEdit);
+          } else {
+            handleAssetEdit(previewAsset);
+          }
+        }}
       />
     </Dialog>
   )

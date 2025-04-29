@@ -30,7 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <header className="sticky top-0 z-10 border-b bg-background">
         <div className="flex h-16 items-center px-4 sm:px-6">
           <h1 className="text-lg font-semibold">Brief Management System</h1>
-          <div className="ml-auto flex items-center gap-2">
+          {/* <div className="ml-auto flex items-center gap-2">
             <Button onClick={handleCreateBrief} size="sm">
               <Plus className="mr-2 h-4 w-4" />
               New Brief
@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Settings className="h-5 w-5" />
               <span className="sr-only">Settings</span>
             </Button>
-          </div>
+          </div> */}
         </div>
         <div className="border-b">
           <div className="flex h-10 items-center px-4 sm:px-6">

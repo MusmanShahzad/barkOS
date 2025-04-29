@@ -192,19 +192,21 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
         thumbnail_media_id: asset.thumbnail_media_id || null,
         url: asset.media?.url || '',
         fileType: asset.media?.file_type || '',
-        tags: asset.tags?.filter(tag => !!tag).map(tag => ({
+        created_at: asset.created_at,
+        // Process tags properly
+        tags: asset.tags?.filter(Boolean).map(tag => ({
           id: tag?.id || 0,
           name: tag?.name || ''
         })) || [],
-        created_at: asset.created_at,
-        relatedBriefs: asset.briefs?.filter(brief => !!brief).map(brief => {
-          // Cast to BriefWithTitle to access title safely
-          const briefInfo = brief as unknown as BriefWithTitle;
-          return {
-            id: briefInfo.id || 0,
-            title: briefInfo.title || 'Untitled Brief'
-          };
-        }) || []
+        // Pass both briefs and relatedBriefs for compatibility with both components
+        briefs: asset.briefs?.filter(Boolean).map(brief => ({
+          id: brief?.id || 0,
+          title: brief?.title || 'Untitled Brief'
+        })) || [],
+        relatedBriefs: asset.briefs?.filter(Boolean).map(brief => ({
+          id: brief?.id || 0,
+          title: brief?.title || 'Untitled Brief'
+        })) || []
       });
       onClose();
     }
@@ -591,7 +593,7 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
                       </Collapsible>
 
                       {/* Related briefs */}
-                      {asset?.briefs && asset.briefs.length > 0 && (
+                      {asset?.briefs && asset.briefs.filter(Boolean).length > 0 && (
                         <Collapsible defaultOpen>
                           <CollapsibleTrigger className="flex items-center justify-between w-full text-sm font-medium">
                             <div className="flex items-center gap-2">
@@ -602,13 +604,13 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
                           </CollapsibleTrigger>
                           <CollapsibleContent className="pt-2 pb-4">
                             <div className="space-y-2">
-                              {asset.briefs.filter(brief => !!brief).map((brief) => (
+                              {asset.briefs.filter(Boolean).map((brief) => (
                                 <div
                                   key={brief?.id}
                                   className="flex items-center justify-between p-2 bg-muted rounded-md"
                                 >
                                   <span className="text-sm font-medium truncate">
-                                    {(brief as unknown as BriefWithTitle)?.title || "Untitled Brief"}
+                                    {brief?.title || "Untitled Brief"}
                                   </span>
                                   <Badge variant="outline">{brief?.status || "Unknown"}</Badge>
                                 </div>

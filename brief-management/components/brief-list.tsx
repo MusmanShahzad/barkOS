@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, MoreHorizontal, Search, Plus, Loader2, ArrowUpDown } from "lucide-react"
+import { Calendar, MoreHorizontal, Search, Plus, Loader2, ArrowUpDown, Filter } from "lucide-react"
 import BriefModal from "@/components/brief-modal"
 import { formatDate } from "@/lib/utils"
 import { BriefListSkeleton } from "@/components/loading-skeletons"
@@ -17,52 +17,100 @@ import {
   GetBriefsDocument, 
   Brief, 
   BriefStatus,
-  BriefFilters,
   BriefSort,
   SortOrder,
-  PaginationInput
+  PaginationInput,
+  useDeleteBriefMutation
 } from "@/src/graphql/generated/graphql"
 import { useApolloClient } from "@apollo/client"
 import { toast } from "sonner"
+import BriefFilters from "@/components/brief-filters"
 
 // Define local types for sorting to avoid conflicts
 type LocalSortField = 'TITLE' | 'CREATED_AT' | 'GO_LIVE_ON' | 'STATUS'
 type LocalSortOrder = 'ASC' | 'DESC'
 
+// Define filter interface to fix TypeScript errors
+interface BriefFiltersInterface {
+  search?: string;
+  status?: BriefStatus[];
+  productId?: number;
+  objectiveId?: number;
+  tagIds?: number[];
+}
+
 export default function BriefList() {
   // State for managing search, filters, and pagination
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
   const [editingBrief, setEditingBrief] = useState<Brief | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(10)
   const [sortField, setSortField] = useState<LocalSortField>("CREATED_AT")
   const [sortOrder, setSortOrder] = useState<LocalSortOrder>("DESC")
   
+  // Advanced filter states
+  const [statusFilters, setStatusFilters] = useState<Record<string, boolean>>({
+    Draft: true,
+    Review: true,
+    Approved: true,
+    Live: true
+  })
+  const [productFilters, setProductFilters] = useState<Record<number, boolean>>({})
+  const [tagFilters, setTagFilters] = useState<Record<number, boolean>>({})
+  const [objectiveFilters, setObjectiveFilters] = useState<Record<number, boolean>>({})
+  
   // Local state to store accumulated briefs for infinite scroll
   const [loadedBriefs, setLoadedBriefs] = useState<Brief[]>([])
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [briefToDelete, setBriefToDelete] = useState<Brief | null>(null)
 
   // Initialize Apollo client for manual refetching
   const client = useApolloClient()
+  
+  // Initialize delete mutation
+  const [deleteBrief] = useDeleteBriefMutation()
 
   // Build filters based on user input
-  const buildFilters = (): BriefFilters => {
-    const filters: any = {}
+  const buildFilters = () => {
+    const filters: BriefFiltersInterface = {}
     
     // Add search filter
     if (searchQuery.trim()) {
       filters.search = searchQuery.trim()
     }
     
-    // Add status filter if not "all"
-    if (statusFilter !== "all") {
-      filters.status = [statusFilter.toUpperCase() as BriefStatus]
+    // Add status filter if not all are selected
+    if (Object.values(statusFilters).some(v => !v)) {
+      filters.status = Object.entries(statusFilters)
+        .filter(([_, isActive]) => isActive)
+        .map(([status]) => status as BriefStatus)
     }
     
-    return filters as BriefFilters
+    // Add product filter if not all are selected
+    if (Object.entries(productFilters).filter(([_, isActive]) => isActive).length < Object.keys(productFilters).length && 
+        Object.entries(productFilters).some(([_, isActive]) => isActive)) {
+      filters.productId = parseInt(Object.entries(productFilters).find(([_, isActive]) => isActive)?.[0] || "0")
+    }
+    
+    // Add objective filter if not all are selected
+    if (Object.entries(objectiveFilters).filter(([_, isActive]) => isActive).length < Object.keys(objectiveFilters).length && 
+        Object.entries(objectiveFilters).some(([_, isActive]) => isActive)) {
+      filters.objectiveId = parseInt(Object.entries(objectiveFilters).find(([_, isActive]) => isActive)?.[0] || "0")
+    }
+    
+    // Add tag filter if not all are selected
+    if (Object.entries(tagFilters).filter(([_, isActive]) => isActive).length < Object.keys(tagFilters).length && 
+        Object.entries(tagFilters).some(([_, isActive]) => isActive)) {
+      filters.tagIds = Object.entries(tagFilters)
+        .filter(([_, isActive]) => isActive)
+        .map(([id]) => parseInt(id))
+    }
+    
+    return filters
   }
 
   // Build sort object for the query
@@ -91,7 +139,7 @@ export default function BriefList() {
   useEffect(() => {
     setLoadedBriefs([]);
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, sortField, sortOrder]);
+  }, [searchQuery, statusFilters, productFilters, tagFilters, objectiveFilters, sortField, sortOrder]);
 
   // Process briefs data when it arrives
   useEffect(() => {
@@ -155,20 +203,24 @@ export default function BriefList() {
     setEditingBrief(null);
     
     try {
-      // First refetch to get new data
-      await refetch();
-      
-      // Then reset the page and clear briefs
-      // This will trigger the useEffect that watches data?.getBriefs?.briefs
-      setCurrentPage(1);
-      setLoadedBriefs([]);
-      
-      // Clear cache to ensure fresh data
-      client.cache.evict({ fieldName: 'getBriefs' });
-      client.cache.evict({ fieldName: 'getBrief' });
-      client.cache.gc();
-      
-      toast.success(`Brief "${brief.title}" ${editingBrief ? 'updated' : 'created'} successfully`);
+      // Only refetch data when brief is actually saved/created
+      // Not during intermediate operations like asset editing
+      if (brief) {
+        // First refetch to get new data
+        await refetch();
+        
+        // Then reset the page and clear briefs
+        // This will trigger the useEffect that watches data?.getBriefs?.briefs
+        setCurrentPage(1);
+        setLoadedBriefs([]);
+        
+        // Clear cache to ensure fresh data
+        client.cache.evict({ fieldName: 'getBriefs' });
+        client.cache.evict({ fieldName: 'getBrief' });
+        client.cache.gc();
+        
+        toast.success(`Brief "${brief.title}" ${editingBrief ? 'updated' : 'created'} successfully`);
+      }
     } catch (error) {
       console.error('Error refetching briefs:', error);
       toast.error('Failed to refresh brief list. Please try again.');
@@ -207,6 +259,96 @@ export default function BriefList() {
     }
   }
 
+  // Filter management
+  const clearAllFilters = () => {
+    setSearchQuery("")
+    
+    // Reset status filters
+    setStatusFilters(Object.keys(statusFilters).reduce((acc, status) => {
+      acc[status] = true
+      return acc
+    }, {} as Record<string, boolean>))
+    
+    // Reset product filters
+    setProductFilters(Object.keys(productFilters).reduce((acc, id) => {
+      acc[parseInt(id)] = true
+      return acc
+    }, {} as Record<number, boolean>))
+    
+    // Reset objective filters
+    setObjectiveFilters(Object.keys(objectiveFilters).reduce((acc, id) => {
+      acc[parseInt(id)] = true
+      return acc
+    }, {} as Record<number, boolean>))
+    
+    // Reset tag filters
+    setTagFilters(Object.keys(tagFilters).reduce((acc, id) => {
+      acc[parseInt(id)] = true
+      return acc
+    }, {} as Record<number, boolean>))
+  }
+
+  const areFiltersActive = (): boolean => {
+    // Check if any filters are active (not all are selected)
+    const allStatusSelected = Object.values(statusFilters).every((value) => value)
+    const allProductsSelected = Object.values(productFilters).every((value) => value)
+    const allObjectivesSelected = Object.values(objectiveFilters).every((value) => value)
+    const allTagsSelected = Object.values(tagFilters).every((value) => value)
+
+    return searchQuery.trim() !== "" || 
+           !allStatusSelected || 
+           !allProductsSelected || 
+           !allObjectivesSelected || 
+           !allTagsSelected
+  }
+
+  const getActiveFilterCount = (): number => {
+    let count = 0
+
+    if (searchQuery.trim() !== "") count++
+
+    // Count how many filter groups have at least one deselected item
+    if (Object.values(statusFilters).some(value => !value)) count++
+    if (Object.values(productFilters).some(value => !value)) count++
+    if (Object.values(objectiveFilters).some(value => !value)) count++
+    if (Object.values(tagFilters).some(value => !value)) count++
+
+    return count
+  }
+
+  // Handle delete brief
+  const handleDeleteBrief = async (brief: Brief) => {
+    try {
+      setIsDeleting(true)
+      setBriefToDelete(brief)
+      
+      const result = await deleteBrief({
+        variables: {
+          id: brief.id
+        },
+        update: (cache) => {
+          // Remove the deleted brief from the cache
+          cache.evict({ id: `Brief:${brief.id}` })
+          cache.gc()
+        }
+      })
+      
+      if (result.data?.deleteBrief) {
+        // Success, update local state to remove the brief
+        setLoadedBriefs(prev => prev.filter(b => b.id !== brief.id))
+        toast.success(`Brief "${brief.title}" deleted successfully`)
+      } else {
+        toast.error("Failed to delete brief")
+      }
+    } catch (error) {
+      console.error("Error deleting brief:", error)
+      toast.error("An error occurred while deleting the brief")
+    } finally {
+      setIsDeleting(false)
+      setBriefToDelete(null)
+    }
+  }
+
   // Shortcuts for readability
   const briefs = loadedBriefs;
   const totalCount = data?.getBriefs?.totalCount || 0;
@@ -215,35 +357,68 @@ export default function BriefList() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search briefs..."
-            className="pl-8"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            disabled={loading && currentPage === 1}
-          />
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <Select value={statusFilter} onValueChange={setStatusFilter} disabled={loading && currentPage === 1}>
-            <SelectTrigger className="w-full sm:w-36">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="review">Review</SelectItem>
-              <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="live">Live</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button onClick={handleCreateBrief}>
-            <Plus className="h-4 w-4 mr-1" />
-            New Brief
+        <div className="flex items-center gap-2">
+          <Button
+            variant={areFiltersActive() ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className="gap-1"
+          >
+            <Filter className="h-4 w-4" />
+            Filters
+            {areFiltersActive() && (
+              <Badge variant="secondary" className="ml-1 h-5 px-1">
+                {getActiveFilterCount()}
+              </Badge>
+            )}
           </Button>
+          <h2 className="text-xl font-semibold">Briefs</h2>
         </div>
+        
+        <Button onClick={handleCreateBrief}>
+          <Plus className="h-4 w-4 mr-1" />
+          New Brief
+        </Button>
       </div>
+      
+      {/* Filter Panel */}
+      {isFilterOpen && (
+        <BriefFilters
+          searchQuery={searchQuery}
+          statusFilters={statusFilters}
+          productFilters={productFilters}
+          tagFilters={tagFilters}
+          objectiveFilters={objectiveFilters}
+          totalCount={data?.getBriefs?.totalCount || 0}
+          onSearchChange={(value: string) => setSearchQuery(value)}
+          onStatusFilterChange={(status: string, checked: boolean) => {
+            setStatusFilters({
+              ...statusFilters,
+              [status]: checked,
+            })
+          }}
+          onProductFilterChange={(id: number, checked: boolean) => {
+            setProductFilters({
+              ...productFilters,
+              [id]: checked,
+            })
+          }}
+          onTagFilterChange={(id: number, checked: boolean) => {
+            setTagFilters({
+              ...tagFilters,
+              [id]: checked,
+            })
+          }}
+          onObjectiveFilterChange={(id: number, checked: boolean) => {
+            setObjectiveFilters({
+              ...objectiveFilters,
+              [id]: checked,
+            })
+          }}
+          onClearFilters={clearAllFilters}
+          onClose={() => setIsFilterOpen(false)}
+        />
+      )}
 
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm">
@@ -298,7 +473,7 @@ export default function BriefList() {
         </div>
       </div>
 
-      {loading && currentPage === 1 ? (
+      {loading && currentPage === 1 && !briefs.length ? (
         <BriefListSkeleton />
       ) : (
         <div className="rounded-md border">
@@ -408,13 +583,22 @@ export default function BriefList() {
                             Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            disabled={isDeleting && briefToDelete?.id === brief.id}
                             onClick={(e) => {
                               e.stopPropagation()
-                              // You can add delete functionality here
-                              toast.error("Delete functionality not implemented")
+                              //if (confirm(`Are you sure you want to delete "${brief.title}"?`)) {
+                              handleDeleteBrief(brief)
+                             // }
                             }}
                           >
-                            Delete
+                            {isDeleting && briefToDelete?.id === brief.id ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Deleting...
+                              </>
+                            ) : (
+                              "Delete"
+                            )}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

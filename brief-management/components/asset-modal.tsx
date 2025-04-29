@@ -43,11 +43,17 @@ function debounce<T extends (...args: any[]) => any>(
   };
 }
 
-export interface IAsset extends Omit<GraphQLAsset, '__typename' | 'comments' | 'tags' | 'briefs'> {
+export interface IAsset extends Omit<GraphQLAsset, '__typename' | 'comments' | 'tags' | 'briefs' | 'thumbnail'> {
   url: string;
   fileType: string;
   tags?: { id: number; name: string }[];
   updated_at?: string;
+  thumbnail?: {
+    id: number;
+    url: string;
+    file_type: string;
+  } | undefined;
+  briefs?: { id: number; title: string }[];
   relatedBriefs?: { id: number; title: string }[];
 }
 
@@ -184,13 +190,16 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
   // Reset form when asset changes
   useEffect(() => {
     if (isOpen) {
+      // Get briefs from either relatedBriefs or briefs property
+      const briefsData = asset?.briefs || asset?.relatedBriefs || [];
+      
       reset({
         title: asset?.name || '',
         description: asset?.description || '',
         mediaId: asset?.media_id ? Number(asset.media_id) : undefined,
         thumbnailMediaId: asset?.thumbnail_media_id ? Number(asset.thumbnail_media_id) : undefined,
         selectedTags: asset?.tags?.map(tag => tag.id) || [],
-        selectedBriefs: asset?.relatedBriefs?.map(brief => String(brief.id)) || [],
+        selectedBriefs: briefsData.map(brief => String(brief.id)) || [],
         fileType: asset?.fileType || '',
         url: asset?.url || '',
       });
@@ -271,25 +280,33 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
         thumbnail_media_id: data.thumbnailMediaId,
         relatedBriefIds: data.selectedBriefs ? data.selectedBriefs.map(id => parseInt(id)) : []
       };
+      let updatedAsset;
 
       if (asset?.id) {
-        await updateAsset({
+        const out = await updateAsset({
           variables: {
             id: asset.id,
             input
           }
         });
+        updatedAsset = out.data?.updateAsset;
       } else {
-        await createAsset({
+        const out = await createAsset({
           variables: {
             input
           }
         });
+        updatedAsset = out.data?.createAsset;
       }
+
+      // Create the briefs data from selectedBriefs
+      const briefsData = data.selectedBriefs?.map(briefId => {
+        return { id: parseInt(briefId), title: `Brief ${briefId}` };
+      }) || [];
 
       // Create a complete asset object to pass to onSave
       const savedAsset: IAsset = {
-        id: asset?.id || 0,
+        id: updatedAsset?.id || asset?.id || 0,
         name: data.title,
         description: data.description,
         media_id: data.mediaId as number,
@@ -300,9 +317,8 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
           const tag = availableTags.find(t => t.id === tagId);
           return { id: tagId, name: tag?.name || '' };
         }),
-        relatedBriefs: data.selectedBriefs?.map(briefId => {
-          return { id: parseInt(briefId), title: `Brief ${briefId}` };
-        }) || [],
+        relatedBriefs: briefsData,
+        briefs: briefsData,
         created_at: asset?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

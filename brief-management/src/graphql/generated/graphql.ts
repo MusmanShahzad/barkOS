@@ -1118,6 +1118,14 @@ export type GetAssetsQueryResult = {
           readonly profile_image?: string | null;
         } | null;
       } | null> | null;
+      readonly briefs?: ReadonlyArray<{
+        readonly __typename: "Brief";
+        readonly id: number;
+        readonly title?: string | null;
+        readonly description?: string | null;
+        readonly status?: BriefStatus | null;
+        readonly created_at: string;
+      } | null> | null;
     } | null>;
   };
 };
@@ -1173,6 +1181,7 @@ export type GetAssetQueryResult = {
     readonly briefs?: ReadonlyArray<{
       readonly __typename: "Brief";
       readonly id: number;
+      readonly title?: string | null;
       readonly about_hook?: string | null;
       readonly about_target_audience?: string | null;
       readonly created_at: string;
@@ -2091,6 +2100,13 @@ export const GetAssetsDocument = gql`
           }
           created_at
         }
+        briefs {
+          id
+          title
+          description
+          status
+          created_at
+        }
         created_at
       }
       totalCount
@@ -2215,6 +2231,7 @@ export const GetAssetDocument = gql`
       }
       briefs {
         id
+        title
         about_hook
         about_target_audience
         created_at

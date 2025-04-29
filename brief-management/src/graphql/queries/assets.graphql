@@ -28,6 +28,13 @@ query GetAssets($filters: AssetFilters, $sort: [AssetSort!], $pagination: Pagina
         }
         created_at
       }
+      briefs {
+        id
+        title
+        description
+        status
+        created_at
+      }
       created_at
     }
     totalCount
@@ -77,6 +84,7 @@ query GetAsset($getAssetId: Int!) {
     }
     briefs {
       id
+      title
       about_hook
       about_target_audience
       created_at
