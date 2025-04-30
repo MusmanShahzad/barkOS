@@ -16,6 +16,7 @@ export interface BriefTokenizeInputProps {
   onChange?: (selectedBriefs: string[]) => void;
   placeholder?: string;
   disabled?: boolean;
+  initialTokens?: Array<{id: number, title: string}>;
 }
 
 interface BriefCacheItem {
@@ -27,7 +28,8 @@ export function BriefTokenizeInput({
   defaultValues = [],
   onChange,
   placeholder = "Select briefs...",
-  disabled = false
+  disabled = false,
+  initialTokens = [],
 }: BriefTokenizeInputProps) {
   // UI state
   const [open, setOpen] = useState(false);
@@ -210,6 +212,28 @@ export function BriefTokenizeInput({
     setLoadingBriefDetails(false);
   }, [selectedValues, accumulatedBriefs, selectedBriefDetails]);
 
+  // Initialize tokens from initialTokens
+  useEffect(() => {
+    if (initialTokens && initialTokens.length > 0) {
+      const briefDetails: Record<string, BriefCacheItem> = {};
+      
+      initialTokens.forEach(token => {
+        if (token && token.id) {
+          const id = String(token.id);
+          briefDetails[id] = {
+            id,
+            title: token.title || `Brief ${id}`
+          };
+        }
+      });
+      
+      setSelectedBriefDetails(prev => ({
+        ...prev,
+        ...briefDetails
+      }));
+    }
+  }, [initialTokens]);
+
   // Loading brief skeleton
   const LoadingBriefSkeleton = () => (
     <div className="flex items-center gap-2 p-2 animate-pulse">
@@ -333,6 +357,10 @@ export function BriefTokenizeInput({
           const briefInResults = accumulatedBriefs?.find((b) => String(b?.id) === briefId);
           const briefInCache = selectedBriefDetails[briefId];
           const isLoading = !briefInResults && !briefInCache && loadingBriefDetails;
+
+          // Find brief title from initialTokens if available
+          const initialToken = initialTokens?.find(token => String(token.id) === briefId);
+          const title = initialToken?.title || briefInResults?.title || briefInCache?.title || `Brief ${briefId}`;
           
           return (
             <Badge
@@ -347,7 +375,7 @@ export function BriefTokenizeInput({
                   <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                   Loading...
                 </span>
-              ) : briefInResults?.title || briefInCache?.title || `Brief ${briefId}`}
+              ) : title}
               <span className="ml-1 text-xs">×</span>
             </Badge>
           );

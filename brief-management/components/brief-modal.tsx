@@ -1079,6 +1079,12 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
                       <AssignToTokenizeInput
                         defaultValues={field.value}
                         onChange={field.onChange}
+                        initialTokens={brief?.users?.map(user => ({
+                          id: Number(user?.id),
+                          full_name: user?.full_name || '',
+                          email: user?.email || '',
+                          profile_image: user?.profile_image || ''
+                        })) || []}
                       />
                     )}
                   />
@@ -1256,6 +1262,10 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
                       onChange={field.onChange}
                       placeholder="Search briefs to link..."
                       disabled={isSubmitting}
+                      initialTokens={brief?.related_briefs?.map(b => ({
+                        id: Number(b?.id),
+                        title: b?.title || `Brief ${b?.id}`
+                      })) || []}
                     />
                   )}
                 />
@@ -1310,15 +1320,13 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
               1. Not in auto-save mode (status is not Draft), OR 
               2. Auto-save is in 'error' state, OR
               3. No auto-save has started yet (idle) */}
-          {(watch('status') !== BriefStatus.Draft || 
-            autoSaveStatus === 'error' || 
-            autoSaveStatus === 'idle') && (
+          
             <Button 
               onClick={submitForm}
-              disabled={isSubmitting}
+              disabled={isSubmitting || autoSaveStatus !== 'idle'}
               type="submit"
             >
-              {isSubmitting ? (
+              {isSubmitting || autoSaveStatus !== 'idle'? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Saving...
@@ -1327,7 +1335,6 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
                 currentBriefId ? 'Update' : 'Create'
               )}
             </Button>
-          )}
         </DialogFooter>
       </DialogContent>
 

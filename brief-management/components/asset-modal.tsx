@@ -241,7 +241,9 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
     if (isOpen) {
       // Get briefs from either relatedBriefs or briefs property
       const briefsData = asset?.briefs || asset?.relatedBriefs || [];
-      console.log("Briefs data:", asset);
+      const briefIds = briefsData.map(brief => String(brief.id));
+      
+      setValue('selectedBriefs', briefIds);
       
       reset({
         title: asset?.name || '',
@@ -249,7 +251,7 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
         mediaId: asset?.media_id ? Number(asset.media_id) : undefined,
         thumbnailMediaId: asset?.thumbnail_media_id ? Number(asset.thumbnail_media_id) : undefined,
         selectedTags: asset?.tags?.map(tag => tag.id) || [],
-        selectedBriefs: briefsData.map(brief => String(brief.id)) || [],
+        selectedBriefs: briefIds,
         fileType: asset?.fileType || '',
         url: asset?.url || '',
       });
@@ -875,6 +877,7 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
                 defaultValues={watch('selectedBriefs') || []}
                 onChange={handleBriefChange}
                 placeholder="Link to briefs..."
+                initialTokens={asset?.relatedBriefs || asset?.briefs || []}
               />
             </div>
 

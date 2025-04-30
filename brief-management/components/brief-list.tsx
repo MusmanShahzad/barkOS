@@ -63,6 +63,7 @@ export default function BriefList() {
   // Local state to store accumulated briefs for infinite scroll
   const [loadedBriefs, setLoadedBriefs] = useState<Brief[]>([])
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [cachedTotalCount, setCachedTotalCount] = useState(0)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [briefToDelete, setBriefToDelete] = useState<Brief | null>(null)
@@ -157,6 +158,11 @@ export default function BriefList() {
       }
       
       setIsLoadingMore(false);
+
+      // Update our cached count when we get fresh data
+      if (data?.getBriefs?.totalCount !== undefined) {
+        setCachedTotalCount(data.getBriefs.totalCount);
+      }
     }
   }, [data?.getBriefs?.briefs, currentPage]);
 
@@ -197,17 +203,20 @@ export default function BriefList() {
   }
 
   const refetchBriefs = async () => {
-    await refetch();
-        
-      // Then reset the page and clear briefs
-      // This will trigger the useEffect that watches data?.getBriefs?.briefs
+    try {
+      // Keep the current briefs visible while refetching
+      await refetch();
+      
+      // Reset to page 1 after successful refetch
       setCurrentPage(1);
-      setLoadedBriefs([]);
       
       // Clear cache to ensure fresh data
       client.cache.evict({ fieldName: 'getBriefs' });
       client.cache.evict({ fieldName: 'getBrief' });
       client.cache.gc();
+    } catch (error) {
+      console.error('Error refetching briefs:', error);
+    }
   }
 
   // Handle successful brief creation/update
@@ -354,7 +363,7 @@ export default function BriefList() {
 
   // Shortcuts for readability
   const briefs = loadedBriefs;
-  const totalCount = data?.getBriefs?.totalCount || 0;
+  const totalCount = loading && cachedTotalCount > 0 ? cachedTotalCount : (data?.getBriefs?.totalCount || 0);
   const hasNextPage = data?.getBriefs?.hasNextPage || false;
 
   return (
@@ -472,7 +481,8 @@ export default function BriefList() {
           </Button>
         </div>
         <div className="text-sm text-muted-foreground">
-          {loading && currentPage === 1 ? "Loading..." : `${totalCount} brief${totalCount !== 1 ? "s" : ""}`}
+          {/* Show stable count during loading */}
+          {totalCount} brief{totalCount !== 1 ? "s" : ""}
         </div>
       </div>
 
@@ -526,7 +536,14 @@ export default function BriefList() {
               {briefs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    No briefs found. Try adjusting your filters or create a new brief.
+                    {loading ? (
+                      <div className="flex flex-col items-center">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto" />
+                        <p className="text-sm text-muted-foreground mt-2">Loading briefs...</p>
+                      </div>
+                    ) : (
+                      <span>No briefs found. Try adjusting your filters or create a new brief.</span>
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -631,8 +648,20 @@ export default function BriefList() {
             </div>
           )}
           
-          {/* End of results message */}
-          {!hasNextPage && briefs.length > 0 && (
+          {/* Show loader at bottom when loading more or refetching with briefs */}
+          {loading && briefs.length > 0 && (
+            <div className="py-4 text-center border-t">
+              <div className="flex flex-col items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  {currentPage > 1 ? "Loading more briefs..." : "Refreshing briefs..."}
+                </p>
+              </div>
+            </div>
+          )}
+          
+          {/* End of results message - only show when not loading */}
+          {!loading && !hasNextPage && briefs.length > 0 && (
             <div className="py-4 text-center text-sm text-muted-foreground border-t">
               {totalCount === briefs.length ? (
                 <span>Showing all {totalCount} briefs</span>
