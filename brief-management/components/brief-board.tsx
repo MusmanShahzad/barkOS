@@ -45,8 +45,7 @@ export default function BriefBoard() {
   const [statusFilters, setStatusFilters] = useState<Record<string, boolean>>({
     Draft: true,
     Review: true,
-    Approved: true,
-    Live: true
+    Approved: true
   })
   const [productFilters, setProductFilters] = useState<Record<number, boolean>>({})
   const [tagFilters, setTagFilters] = useState<Record<number, boolean>>({})
@@ -340,9 +339,9 @@ export default function BriefBoard() {
     return count
   }
 
-  if (loading && currentPage === 1 && !data) {
-    return <BriefBoardSkeleton />
-  }
+  // if (loading && currentPage === 1 && !data) {
+  //   return <BriefBoardSkeleton />
+  // }
 
   const hasNextPage = data?.getBriefs?.hasNextPage || false;
 
@@ -407,7 +406,9 @@ export default function BriefBoard() {
         </div>
       )}
 
-      <div className="flex-grow">
+      {(loading && currentPage === 1 && !data)? <div className="flex-grow">
+        <BriefBoardSkeleton />
+      </div> :  <div className="flex-grow">
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
             {Object.keys(columns).map((columnId) => (
@@ -511,7 +512,7 @@ export default function BriefBoard() {
             ))}
           </div>
         </DragDropContext>
-      </div>
+      </div>}
 
       {/* Infinite scroll loading indicator - outside the grid for global loading */}
       {(hasNextPage || isLoadingMore) && (

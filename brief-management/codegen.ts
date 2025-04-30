@@ -5,7 +5,7 @@ const config: CodegenConfig = {
   documents: ['./src/graphql/**/*.graphql'],
   schema: [
     {
-      'http://localhost:4000/graphql': {
+      'https://brief-management-be.vercel.app/graphql': {
         headers: {
           'Content-Type': 'application/json',
           'Apollo-Require-Preflight': 'true'

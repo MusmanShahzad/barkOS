@@ -53,7 +53,6 @@ export default function CalendarView() {
     Draft: true,
     Review: true,
     Approved: true,
-    Live: true
   })
   const [productFilters, setProductFilters] = useState<Record<number, boolean>>({})
   const [tagFilters, setTagFilters] = useState<Record<number, boolean>>({})
