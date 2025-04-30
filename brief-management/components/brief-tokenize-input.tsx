@@ -94,24 +94,6 @@ export function BriefTokenizeInput({
     }
   }, [data?.getBriefs?.briefs, page]);
 
-  // Reset pagination when search changes
-  useEffect(() => {
-    if (debouncedSearch !== undefined) {
-      setPage(1);
-      setAccumulatedBriefs([]);
-      
-      refetch({
-        pagination: {
-          page: 1,
-          pageSize: PAGE_SIZE
-        },
-        filters: {
-          search: debouncedSearch || undefined
-        }
-      });
-    }
-  }, [debouncedSearch, refetch]);
-
   // Sync selection with parent component
   useEffect(() => {
     if (JSON.stringify(defaultValues) !== JSON.stringify(selectedValues)) {
@@ -121,6 +103,11 @@ export function BriefTokenizeInput({
 
   // Handle search
   const handleSearch = (query: string) => {
+    // When search changes, explicitly reset page to 1
+    if (search !== query) {
+      setPage(1);
+      setAccumulatedBriefs([]);
+    }
     setSearch(query);
   };
 
@@ -136,7 +123,7 @@ export function BriefTokenizeInput({
     
     await refetch({
       pagination: {
-        page: 1,
+        page: 1, // Always use page 1 when refreshing
         pageSize: PAGE_SIZE
       },
       filters: {
@@ -246,12 +233,50 @@ export function BriefTokenizeInput({
   const handlePopoverOpenChange = useCallback((isOpen: boolean) => {
     setOpen(isOpen);
     if (isOpen) {
-      // Only reset if the search has changed or we don't have any briefs
-      if (debouncedSearch || accumulatedBriefs.length === 0) {
-        refreshBriefs();
-      }
+      console.log("Popover opened, refreshing briefs");
+      refreshBriefs();
     }
-  }, [debouncedSearch, accumulatedBriefs.length, refreshBriefs]);
+  }, [refreshBriefs]);
+
+  // Add ref for intersection observer
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  
+  // Set up intersection observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting && hasMoreBriefs && !loading && !isLoadingMore) {
+          handleLoadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentRef = loadMoreRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, [hasMoreBriefs, loading, isLoadingMore, handleLoadMore]);
+
+  // Reset pagination when search changes
+  useEffect(() => {
+    refetch({
+      pagination: {
+        page,
+        pageSize: PAGE_SIZE
+      },
+      filters: {
+        search: debouncedSearch || undefined
+      }
+    });
+  }, [debouncedSearch, page, refetch]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -314,6 +339,8 @@ export function BriefTokenizeInput({
                   </CommandItem>
                 );
               })}
+              
+              {/* Loading indicator for initial load or loading more */}
               {(loading && accumulatedBriefs.length === 0) || isLoadingMore ? (
                 <div className="p-2">
                   <LoadingBriefSkeleton />
@@ -321,20 +348,13 @@ export function BriefTokenizeInput({
                   <LoadingBriefSkeleton />
                 </div>
               ) : null}
-              {!loading && !isLoadingMore && hasMoreBriefs && (
-                <div className="p-2">
-                  <Button 
-                    variant="ghost" 
-                    className="w-full text-sm" 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleLoadMore();
-                    }}
-                  >
-                    Load more
-                  </Button>
-                </div>
+              
+              {/* Infinite scroll trigger div - replace load more button */}
+              {hasMoreBriefs && !isLoadingMore && !loading && (
+                <div 
+                  ref={loadMoreRef} 
+                  className="h-4 w-full opacity-0"
+                />
               )}
               
               {/* End of results message */}
