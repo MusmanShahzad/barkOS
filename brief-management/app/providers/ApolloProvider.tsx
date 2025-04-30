@@ -6,7 +6,7 @@ import createUploadLink from 'apollo-upload-client/createUploadLink.mjs';
 
 const client = new ApolloClient({
   link: createUploadLink({
-    uri: process.env.NEXT_PUBLIC_GRAPHQL_URL || 'https://brief-management-be.vercel.app/graphql'
+    uri: process.env.NEXT_PUBLIC_GRAPHQL_URL || 'https://brief-management-5tty387q3-musmanshahzads-projects.vercel.app/'
   }),
   cache: new InMemoryCache(),
 });
