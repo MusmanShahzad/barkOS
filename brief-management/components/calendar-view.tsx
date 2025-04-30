@@ -34,6 +34,8 @@ import { format, isSameDay, isWithinInterval, addDays, startOfWeek, endOfWeek, s
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd"
 import BriefFilters from "@/components/brief-filters"
+import { ApolloClient, useApolloClient } from "@apollo/client"
+import { GetBriefsDocument } from "@/src/graphql/generated/graphql"
 
 export default function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -46,6 +48,7 @@ export default function CalendarView() {
   const [pageSize] = useState(200) // Larger page size to accommodate multiple weeks
   const calendarRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
+  const client = useApolloClient()
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState("")
@@ -265,27 +268,70 @@ export default function CalendarView() {
     const [_, ...dateParts] = destination.droppableId.split('-')
     const newGoLiveDate = dateParts.join('-')
     
+    // Create a copy of the brief with updated date for optimistic UI
+    const updatedBrief = {
+      ...brief,
+      go_live_on: newGoLiveDate
+    }
+    
     try {
-      // Don't use Object.assign for immutable data
-      // Instead, create a clone to work with for UI updates
+      // Immediately update the calendar view with the new date
+      // This avoids waiting for API response or refetch
       if (data?.getBriefs?.briefs) {
+        // Create a new array with the updated brief
         const updatedBriefs = data.getBriefs.briefs.map(b => {
           if (b && b.id === briefId) {
-            return {
-              ...b,
-              go_live_on: newGoLiveDate
-            }
+            return updatedBrief
           }
           return b
-        });
+        })
         
-        // Manually set it in the state to handle optimistic UI updates
-        // This won't mutate the original object but will show the change immediately
-        refetch();
+        // Manually update the Apollo cache to reflect changes immediately
+        // This will update the UI without fetching from server
+        const existingData = { ...data }
+        if (existingData.getBriefs) {
+          existingData.getBriefs.briefs = updatedBriefs
+        }
+        
+        // Use cache writes instead of refetch for immediate UI updates
+        const cache = client?.cache
+        if (cache) {
+          cache.writeQuery({
+            query: GetBriefsDocument,
+            variables: {
+              pagination: {
+                page: 1,
+                pageSize
+              },
+              filters: {
+                ...(searchQuery ? { search: searchQuery } : {}),
+                ...(Object.values(statusFilters).some(v => !v) ? { 
+                  status: Object.entries(statusFilters)
+                    .filter(([_, isActive]) => isActive)
+                    .map(([status]) => status as BriefStatus)
+                } : {}),
+                ...(Object.entries(productFilters).filter(([_, isActive]) => isActive).length < Object.keys(productFilters).length ? {
+                  productId: parseInt(Object.entries(productFilters).find(([_, isActive]) => isActive)?.[0] || "0")
+                } : {}),
+                ...(Object.entries(objectiveFilters).filter(([_, isActive]) => isActive).length < Object.keys(objectiveFilters).length ? {
+                  objectiveId: parseInt(Object.entries(objectiveFilters).find(([_, isActive]) => isActive)?.[0] || "0")
+                } : {}),
+                ...(Object.entries(tagFilters).filter(([_, isActive]) => isActive).length < Object.keys(tagFilters).length ? {
+                  tagIds: Object.entries(tagFilters)
+                    .filter(([_, isActive]) => isActive)
+                    .map(([id]) => parseInt(id))
+                } : {}),
+                goLiveOn: getDateRange()
+              },
+              sort: [{ field: "GO_LIVE_ON", order: "ASC" }]
+            },
+            data: existingData
+          })
+        }
       }
       
-      // Update the brief in the database
-      await updateBrief({
+      // Update the backend (non-blocking)
+      updateBrief({
         variables: {
           id: briefId,
           input: {
@@ -304,22 +350,26 @@ export default function CalendarView() {
                              .map(user => user!.id) || []
           }
         }
-      })
-      
-      toast({
-        title: "Brief updated",
-        description: `"${brief.title}" moved to ${format(parseISO(newGoLiveDate), 'PP')}`,
-        variant: "default"
+      }).then(() => {
+        toast({
+          title: "Brief updated",
+          description: `"${brief.title}" moved to ${format(parseISO(newGoLiveDate), 'PP')}`,
+          variant: "default"
+        })
+      }).catch((error) => {
+        console.error("Error updating brief:", error)
+        toast({
+          title: "Error",
+          description: "Failed to update brief. Please try again.",
+          variant: "destructive"
+        })
+        
+        // Revert the optimistic update by refreshing from the server
+        refetch()
       })
     } catch (error) {
-      console.error("Error updating brief:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update brief. Please try again.",
-        variant: "destructive"
-      })
-      
-      // Revert the optimistic update
+      console.error("Error updating UI:", error)
+      // Fallback to refetch if there's an error with the optimistic update
       refetch()
     }
   }

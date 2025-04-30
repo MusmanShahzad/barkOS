@@ -925,15 +925,15 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
             onClick={handleClose}
             disabled={isUploading || isSubmitting}
           >
-            {asset?.id && autoSaveStatus !== 'idle' ? 'Close' : 'Cancel'}
+            {asset?.id ? 'Close' : 'Cancel'}
           </Button>
-          {(asset?.id === undefined || autoSaveStatus === 'idle') && (
+          {(
             <Button 
               type="button"
               onClick={submitForm}
-              disabled={((!watch('mediaId') && !asset) && !mediaRemoved) || isUploading || isSubmitting}
+              disabled={((!watch('mediaId') && !asset) && !mediaRemoved) || isUploading || isSubmitting || autoSaveStatus !== 'idle'}
             >
-              {isSubmitting ? (
+              {(isSubmitting || autoSaveStatus !== 'idle') ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Saving...

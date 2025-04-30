@@ -35,7 +35,7 @@ export default function RootLayout({
               <Sidebar />
               <div className="flex-1 flex flex-col overflow-hidden">
                 <header className="h-14 border-b flex items-center px-4 justify-between">
-                  <div class="ml-auto">
+                  <div className="ml-auto">
                     <ThemeToggle />
                   </div>
                 </header>
