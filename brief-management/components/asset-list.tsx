@@ -159,7 +159,6 @@ export default function AssetList({ className }: AssetListProps) {
   const [sortOrder, setSortOrder] = useState<LocalSortOrder>("DESC")
   const [loadedAssets, setLoadedAssets] = useState<IAsset[]>([])
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [isRefetching, setIsRefetching] = useState(false)
   
   // Set up react-intersection-observer with options
   const { ref: loadMoreRef, inView } = useInView({
@@ -314,7 +313,6 @@ export default function AssetList({ className }: AssetListProps) {
   useEffect(() => {
     setLoadedAssets([]);
     setCurrentPage(1);
-    setIsRefetching(true);
   }, [search, typeFilter, sortField, sortOrder]);
   
   const assets = loadedAssets;
@@ -383,7 +381,6 @@ export default function AssetList({ className }: AssetListProps) {
     try {
       setCurrentPage(1);
       setLoadedAssets([]);
-      setIsRefetching(true);
       
       // Evict and refetch for fresh data
       client.cache.evict({ fieldName: 'getAssets' });
@@ -397,8 +394,6 @@ export default function AssetList({ className }: AssetListProps) {
         },
         sort: [{ field: sortField, order: sortOrder }]
       });
-      
-      setIsRefetching(false);
     } catch (error) {
       console.error("Error refetching assets:", error);
       toast({
@@ -406,7 +401,6 @@ export default function AssetList({ className }: AssetListProps) {
         description: "Failed to refresh assets",
         variant: "destructive"
       });
-      setIsRefetching(false);
     }
   }, [client.cache, refetch, pageSize, search, typeFilter, sortField, sortOrder]);
 
@@ -508,14 +502,14 @@ export default function AssetList({ className }: AssetListProps) {
 
   const renderGridView = () => {
     // Added console log to debug
-    console.log('Rendering grid view with assets:', assets, 'length:', assets?.length, 'isRefetching:', isRefetching);
+    console.log('Rendering grid view with assets:', assets, 'length:', assets?.length);
     
-    // Only show full skeleton on initial load or when refetching
-    if ((isLoading && currentPage === 1 && (!assets || assets.length === 0)) || isRefetching) {
+    // Only show full skeleton on initial load, never during pagination
+    if (isLoading && currentPage === 1 && (!assets || assets.length === 0)) {
       return <AssetGridSkeleton />
     }
 
-    if ((!assets || assets.length === 0) && !isLoading && !isRefetching) {
+    if ((!assets || assets.length === 0) && !isLoading) {
       return (
         <div className="text-center py-12 border rounded-lg">
           <FileIcon className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -655,14 +649,14 @@ export default function AssetList({ className }: AssetListProps) {
 
   const renderListView = () => {
     // Added console log to debug
-    console.log('Rendering list view with assets:', assets, 'length:', assets?.length, 'isRefetching:', isRefetching);
+    console.log('Rendering list view with assets:', assets, 'length:', assets?.length);
     
-    // Only show full skeleton on initial load or when refetching
-    if ((isLoading && currentPage === 1 && (!assets || assets.length === 0)) || isRefetching) {
+    // Only show full skeleton on initial load, never during pagination
+    if (isLoading && currentPage === 1 && (!assets || assets.length === 0)) {
       return <AssetListSkeleton />
     }
     
-    if ((!assets || assets.length === 0) && !isLoading && !isRefetching) {
+    if ((!assets || assets.length === 0) && !isLoading) {
       return (
         <div className="text-center py-12 border rounded-lg">
           <FileIcon className="mx-auto h-12 w-12 text-muted-foreground" />
