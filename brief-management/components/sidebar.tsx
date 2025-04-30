@@ -19,12 +19,6 @@ export function Sidebar({ className }: SidebarProps) {
 
   const routes = [
     {
-      label: "Dashboard",
-      icon: Home,
-      href: "/",
-      active: pathname === "/",
-    },
-    {
       label: "Briefs",
       icon: FileText,
       href: "/briefs",
@@ -41,18 +35,6 @@ export function Sidebar({ className }: SidebarProps) {
       icon: Users,
       href: "/users",
       active: pathname === "/users",
-    },
-    {
-      label: "Analytics",
-      icon: BarChart2,
-      href: "/analytics",
-      active: pathname === "/analytics",
-    },
-    {
-      label: "Settings",
-      icon: Settings,
-      href: "/settings",
-      active: pathname === "/settings",
     },
   ]
 

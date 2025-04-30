@@ -43,7 +43,8 @@ export const AssignToTokenizeInput = ({
         field: "FULL_NAME",
         order: "ASC",
       }
-    }
+    },
+    fetchPolicy: 'network-only'
   });
 
   const handleSearch = useCallback(async (query: string) => {

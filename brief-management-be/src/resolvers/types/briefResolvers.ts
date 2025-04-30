@@ -114,7 +114,8 @@ export const BriefResolvers = {
     const { data: comments, error: commentsError } = await supabase
       .from('comments')
       .select('*')
-      .in('id', commentIds);
+      .in('id', commentIds)
+      .order('created_at', { ascending: false });
     
     if (commentsError) throw new Error(commentsError.message);
     return comments || [];

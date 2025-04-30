@@ -104,7 +104,7 @@ interface Comment {
 
 export interface AssetModalProps {
   isOpen: boolean
-  onClose: () => void
+  onClose: (asset?: IAsset) => Promise<void> | void
   onSave: (asset: IAsset) => Promise<void>
   asset: IAsset | null
 }
@@ -241,6 +241,7 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
     if (isOpen) {
       // Get briefs from either relatedBriefs or briefs property
       const briefsData = asset?.briefs || asset?.relatedBriefs || [];
+      console.log("Briefs data:", asset);
       
       reset({
         title: asset?.name || '',
@@ -283,7 +284,6 @@ export function AssetModal({ isOpen, onClose, onSave, asset }: AssetModalProps) 
     
     // Reset the form element directly
     if (formRef.current) {
-      console.log('resetting 2')
       formRef.current.reset();
     }
     

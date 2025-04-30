@@ -197,6 +197,20 @@ export default function BriefList() {
     setIsModalOpen(true)
   }
 
+  const refetchBriefs = async () => {
+    await refetch();
+        
+      // Then reset the page and clear briefs
+      // This will trigger the useEffect that watches data?.getBriefs?.briefs
+      setCurrentPage(1);
+      setLoadedBriefs([]);
+      
+      // Clear cache to ensure fresh data
+      client.cache.evict({ fieldName: 'getBriefs' });
+      client.cache.evict({ fieldName: 'getBrief' });
+      client.cache.gc();
+  }
+
   // Handle successful brief creation/update
   const handleBriefSuccess = async (brief: Brief) => {
     setIsModalOpen(false);
@@ -207,18 +221,8 @@ export default function BriefList() {
       // Not during intermediate operations like asset editing
       if (brief) {
         // First refetch to get new data
-        await refetch();
         
-        // Then reset the page and clear briefs
-        // This will trigger the useEffect that watches data?.getBriefs?.briefs
-        setCurrentPage(1);
-        setLoadedBriefs([]);
-        
-        // Clear cache to ensure fresh data
-        client.cache.evict({ fieldName: 'getBriefs' });
-        client.cache.evict({ fieldName: 'getBrief' });
-        client.cache.gc();
-        
+        await refetchBriefs();
         toast.success(`Brief "${brief.title}" ${editingBrief ? 'updated' : 'created'} successfully`);
       }
     } catch (error) {
@@ -613,15 +617,17 @@ export default function BriefList() {
           {hasNextPage && (
             <div 
               ref={loadMoreRef} 
-              className="py-4 flex justify-center items-center border-t"
+              className="py-4 text-center border-t"
             >
               {isLoadingMore || (loading && currentPage > 1) ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Loading more briefs...</span>
+                <div className="flex flex-col items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin mb-2" />
+                  <p className="text-sm text-muted-foreground">Loading more briefs...</p>
                 </div>
               ) : (
-                <div className="h-8" />
+                <div className="h-8">
+                  {/* Invisible spacer for intersection observer */}
+                </div>
               )}
             </div>
           )}
@@ -629,7 +635,7 @@ export default function BriefList() {
           {/* End of results message */}
           {!hasNextPage && briefs.length > 0 && (
             <div className="py-4 text-center text-sm text-muted-foreground border-t">
-              {totalCount ? (
+              {totalCount === briefs.length ? (
                 <span>Showing all {totalCount} briefs</span>
               ) : (
                 <span>End of results</span>
@@ -644,6 +650,7 @@ export default function BriefList() {
         onClose={() => {
           setIsModalOpen(false)
           setEditingBrief(null)
+          refetchBriefs()
         }}
         onSuccess={handleBriefSuccess}
         brief={editingBrief}

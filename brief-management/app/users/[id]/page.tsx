@@ -1,5 +1,5 @@
-import type { Metadata } from "next"
-import UserDetail from "@/components/user-detail"
+import { Metadata } from "next"
+import UserDetailView from "@/components/user-detail-view"
 
 export const metadata: Metadata = {
   title: "User Details",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 }
 
 export default function UserDetailPage({ params }: { params: { id: string } }) {
-  return <UserDetail userId={params.id} />
+  return <UserDetailView userId={parseInt(params.id, 10)} />
 }

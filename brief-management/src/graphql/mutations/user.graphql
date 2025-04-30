@@ -1,0 +1,35 @@
+mutation CreateUser($input: UserInput!) {
+  createUser(input: $input) {
+    id
+    full_name
+    email
+    bio
+    phone_number
+    profile_image
+    created_at
+  }
+}
+
+mutation UpdateUser($id: Int!, $input: UserInput!) {
+  updateUser(id: $id, input: $input) {
+    id
+    full_name
+    email
+    bio
+    phone_number
+    profile_image
+    created_at
+  }
+}
+
+mutation DeleteUser($id: Int!) {
+  deleteUser(id: $id)
+}
+
+mutation AddUserToBrief($userId: Int!, $briefId: Int!) {
+  addUserToBrief(userId: $userId, briefId: $briefId)
+}
+
+mutation RemoveUserFromBrief($userId: Int!, $briefId: Int!) {
+  removeUserFromBrief(userId: $userId, briefId: $briefId)
+} 

@@ -34,7 +34,7 @@ export default function BriefBoard() {
   const [editingBrief, setEditingBrief] = useState<Brief | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize] = useState(30) // Larger page size for board view
+  const [pageSize] = useState(100) // Larger page size for board view
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
@@ -51,10 +51,12 @@ export default function BriefBoard() {
   const [productFilters, setProductFilters] = useState<Record<number, boolean>>({})
   const [tagFilters, setTagFilters] = useState<Record<number, boolean>>({})
   const [objectiveFilters, setObjectiveFilters] = useState<Record<number, boolean>>({})
+  // Add a refetching state near the other state variables
+  const [isRefetching, setIsRefetching] = useState(false)
 
   // Build filters based on user inputs
-  const buildFilters = (): BriefFilters => {
-    const filters: any = {};
+  const buildFilters = () => {
+    const filters: Record<string, any> = {};
     
     // Add search filter
     if (searchQuery.trim()) {
@@ -88,10 +90,10 @@ export default function BriefBoard() {
         .map(([id]) => parseInt(id));
     }
     
-    return filters as BriefFilters;
+    return filters;
   };
 
-  // GraphQL query to fetch all briefs with a single query
+  // Modify the useGetBriefsQuery to reset the cache when refetching
   const { data, loading, refetch } = useGetBriefsQuery({
     variables: {
       pagination: {
@@ -118,7 +120,7 @@ export default function BriefBoard() {
     }
   }, [searchQuery, statusFilters, productFilters, tagFilters, objectiveFilters]);
 
-  // Set briefs when data is loaded
+  // Update the useEffect for handling data
   useEffect(() => {
     if (data?.getBriefs?.briefs) {
       const processedBriefs = data.getBriefs.briefs.filter(Boolean) as Brief[];
@@ -135,6 +137,7 @@ export default function BriefBoard() {
       }
       
       setIsLoadingMore(false);
+      setIsRefetching(false); // Reset refetching flag
     }
   }, [data?.getBriefs?.briefs, currentPage]);
 
@@ -251,12 +254,19 @@ export default function BriefBoard() {
   const handleBriefSuccess = async (updatedBrief: Brief) => {
     setIsModalOpen(false)
     setEditingBrief(null)
+    setIsRefetching(true) // Set the refetching state
     
     try {
-      // Reset page and briefs to trigger a fresh load
       setCurrentPage(1)
-      setBriefs([])
-      await refetch()
+      
+      await refetch({
+        pagination: {
+          page: 1,
+          pageSize
+        },
+        filters: buildFilters(),
+        sort: [{ field: "CREATED_AT", order: "DESC" }]
+      })
       
       toast({
         title: "Brief updated",
@@ -264,6 +274,7 @@ export default function BriefBoard() {
       })
     } catch (error) {
       console.error('Error refetching briefs:', error)
+      setIsRefetching(false)
       toast({
         title: "Refresh failed",
         description: "Failed to refresh brief board. Please reload the page.",
@@ -518,13 +529,40 @@ export default function BriefBoard() {
 
       <BriefModal
         isOpen={isModalOpen}
-        onClose={() => {
+        onClose={async () => {
           setIsModalOpen(false)
           setEditingBrief(null)
+          setIsRefetching(true) // Set the refetching state
+          
+          try {
+            setCurrentPage(1)
+            
+            await refetch({
+              pagination: {
+                page: 1,
+                pageSize
+              },
+              filters: buildFilters(),
+              sort: [{ field: "CREATED_AT", order: "DESC" }]
+            })
+          } catch (error) {
+            console.error('Error refetching briefs:', error)
+            setIsRefetching(false)
+          }
         }}
         onSuccess={handleBriefSuccess}
         brief={editingBrief}
       />
+
+      {/* Add a loading indicator in the return statement (find an appropriate place in the UI, maybe right before the BriefModal component) */}
+      {/* {isRefetching && (
+        <div className="fixed inset-0 bg-black/10 flex items-center justify-center z-50">
+          <div className="bg-white p-4 rounded-md shadow-md flex items-center gap-2">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Updating board...</span>
+          </div>
+        </div>
+      )} */}
     </div>
   )
 }

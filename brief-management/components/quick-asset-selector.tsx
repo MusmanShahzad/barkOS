@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { FileIcon, Grid, List, Plus, Search, X, Upload, FileImage, Loader2, Play } from "lucide-react"
+import { FileIcon, Grid, List, Plus, Search, X, FileImage, Play } from "lucide-react"
 import { formatFileSize } from "@/lib/utils"
 import Image from "next/image"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -14,7 +14,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { VirtualList } from "@/components/virtual-list"
 import AssetPreviewModal from "@/components/asset-preview-modal"
 import { useGetAssetsQuery, Asset, Maybe } from "@/src/graphql/generated/graphql"
-import { IAsset } from "@/components/asset-modal"
+import { AssetModal, IAsset } from "@/components/asset-modal"
+import { toast } from "@/hooks/use-toast"
+import { useDebounce } from "@/hooks/use-debounce"
+import { useApolloClient } from "@apollo/client"
 
 // Define interfaces for component props
 interface QuickAssetSelectorProps {
@@ -29,23 +32,32 @@ export function QuickAssetSelector({
   onAddNew
 }: QuickAssetSelectorProps) {
   const [searchQuery, setSearchQuery] = useState("")
+  const debouncedSearchQuery = useDebounce(searchQuery, 300)
   const [viewMode, setViewMode] = useState("grid")
   const [localSelectedAssets, setLocalSelectedAssets] = useState<IAsset[]>(selectedAssets)
   const [isOpen, setIsOpen] = useState(false)
   const [page, setPage] = useState(1)
   const [previewAsset, setPreviewAsset] = useState<number | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [selectedAsset, setSelectedAsset] = useState<IAsset | null>(null)
+  const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null)
   const PAGE_SIZE = 10
+  
+  // Accumulated assets state (similar to loadedBriefs in brief-list.tsx)
+  const [accumulatedAssets, setAccumulatedAssets] = useState<IAsset[]>([])
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const client = useApolloClient()
 
   // Query assets using GraphQL
-  const { data, loading, fetchMore } = useGetAssetsQuery({
+  const { data, loading, fetchMore, refetch } = useGetAssetsQuery({
     variables: {
       pagination: {
         page,
         pageSize: PAGE_SIZE
       },
       filters: {
-        search: searchQuery || undefined
+        search: debouncedSearchQuery || undefined
       },
       sort: [
         {
@@ -54,7 +66,9 @@ export function QuickAssetSelector({
         }
       ]
     },
-    skip: !isOpen // Only fetch when popover is open
+    skip: !isOpen,
+    notifyOnNetworkStatusChange: true,
+    fetchPolicy: 'cache-and-network'
   })
 
   // Update local state when props change
@@ -62,10 +76,45 @@ export function QuickAssetSelector({
     setLocalSelectedAssets(selectedAssets)
   }, [selectedAssets])
 
-  // Convert API assets to IAsset format
-  const mapAssetsFromApi = (assets: readonly Maybe<Asset>[]): IAsset[] => {
-    return assets
-      .filter((asset): asset is Asset => asset !== null)
+  // Reset pagination when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setPage(1)
+      setAccumulatedAssets([])
+    }
+  }, [isOpen])
+
+  // Handle search query changes
+  useEffect(() => {
+    if (isOpen && debouncedSearchQuery !== undefined) {
+      // Reset to page 1 when search changes
+      setPage(1)
+      setAccumulatedAssets([])
+      
+      // Refetch data with new search parameters
+      refetch({
+        pagination: {
+          page: 1,
+          pageSize: PAGE_SIZE
+        },
+        filters: {
+          search: debouncedSearchQuery || undefined
+        },
+        sort: [
+          {
+            field: "CREATED_AT",
+            order: "DESC"
+          }
+        ]
+      })
+    }
+  }, [debouncedSearchQuery, isOpen, refetch])
+
+  const mapAssetsFromApi = useCallback((apiAssets: readonly any[]): IAsset[] => {
+    if (!apiAssets || !Array.isArray(apiAssets)) return []
+    
+    return apiAssets
+      .filter(asset => asset !== null)
       .map((asset): IAsset => {
         return {
           id: Number(asset.id),
@@ -74,68 +123,106 @@ export function QuickAssetSelector({
           media_id: Number(asset.media?.id || 0),
           thumbnail_media_id: asset.thumbnail?.id || null,
           created_at: asset.created_at || "",
-          url: asset.media?.url || "/placeholder.svg",
-          fileType: asset.media?.file_type || "application/octet-stream",
+          url: asset.media?.url ?? "/placeholder.svg",
+          fileType: asset.media?.file_type ?? "application/octet-stream", 
           thumbnail: asset.thumbnail ? {
             id: asset.thumbnail.id,
-            url: asset.thumbnail.url,
-            file_type: asset.thumbnail.file_type
+            url: asset.thumbnail.url || "",
+            file_type: asset.thumbnail.file_type || ""
           } : undefined,
-          tags: asset.tags?.filter(Boolean).map(tag => ({
+          tags: asset.tags?.filter(Boolean).map((tag: any) => ({
             id: Number(tag?.id || 0),
             name: tag?.name || ''
           })) || [],
-          briefs: asset.briefs?.filter(Boolean).map(brief => ({
+          briefs: asset.briefs?.filter(Boolean).map((brief: any) => ({
             id: Number(brief?.id || 0),
             title: brief?.title || ''
           })) || [],
-          relatedBriefs: asset.briefs?.filter(Boolean).map(brief => ({
+          relatedBriefs: asset.briefs?.filter(Boolean).map((brief: any) => ({
             id: Number(brief?.id || 0),
             title: brief?.title || ''
           })) || [],
           updated_at: asset.created_at || ""
         }
       })
-  }
+  }, [])
+  // Process assets data when it arrives (similar to the briefs processor in brief-list)
+  useEffect(() => {
+    if (data?.getAssets?.assets) {
+      // Convert API assets to IAsset format
+      const processedAssets = mapAssetsFromApi(data.getAssets.assets as any);
+      
+      if (page === 1) {
+        setAccumulatedAssets(processedAssets);
+      } else {
+        setAccumulatedAssets(prev => {
+          // Deduplicate assets when adding new ones
+          const existingIds = new Set(prev.map(asset => asset.id));
+          const uniqueNewAssets = processedAssets.filter(asset => !existingIds.has(asset.id));
+          return [...prev, ...uniqueNewAssets];
+        });
+      }
+      
+      setIsLoadingMore(false);
+    }
+  }, [data?.getAssets?.assets, page, mapAssetsFromApi]);
 
-  // Available assets data
-  const availableAssets = mapAssetsFromApi(data?.getAssets?.assets || [])
+  // Convert API assets to IAsset format
+
+
+  // Get hasNextPage and totalCount from data
   const hasMoreAssets = data?.getAssets?.hasNextPage || false
   const totalAssets = data?.getAssets?.totalCount || 0
 
-  // Load more assets
-  const loadMoreAssets = () => {
-    if (loading || !hasMoreAssets) return
-
+  // Load more assets function
+  const loadMoreAssets = useCallback(() => {
+    if (loading || !hasMoreAssets || isLoadingMore) return
+    
+    setIsLoadingMore(true)
     const nextPage = page + 1
+    setPage(nextPage)
+    
     fetchMore({
       variables: {
         pagination: {
           page: nextPage,
           pageSize: PAGE_SIZE
-        }
-      },
-      updateQuery: (prev, { fetchMoreResult }) => {
-        if (!fetchMoreResult) return prev
-        return {
-          ...fetchMoreResult,
-          getAssets: {
-            ...fetchMoreResult.getAssets,
-            assets: [
-              ...(prev.getAssets.assets || []),
-              ...(fetchMoreResult.getAssets.assets || [])
-            ]
-          }
+        },
+        filters: {
+          search: debouncedSearchQuery || undefined
         }
       }
+    }).catch(error => {
+      setIsLoadingMore(false)
+      console.error("Error loading more assets:", error)
     })
-    setPage(nextPage)
+  }, [loading, hasMoreAssets, isLoadingMore, page, fetchMore, debouncedSearchQuery])
+
+  // Refresh the asset data
+  const refreshAssets = async () => {
+    // Reset page and accumulated assets
+    setPage(1)
+    setAccumulatedAssets([])
+    
+    // Clear cache to ensure fresh data
+    client.cache.evict({ fieldName: 'getAssets' })
+    client.cache.gc()
+    
+    await refetch({
+      pagination: {
+        page: 1,
+        pageSize: PAGE_SIZE
+      },
+      filters: {
+        search: debouncedSearchQuery || undefined
+      }
+    })
   }
 
   // Toggle asset selection
   const toggleAssetSelection = (assetId: number) => {
     // Find the asset in available assets
-    const asset = availableAssets.find(a => a.id === assetId)
+    const asset = accumulatedAssets.find(a => a.id === assetId)
     
     // If asset is not found, do nothing
     if (!asset) return
@@ -182,6 +269,11 @@ export function QuickAssetSelector({
   const openAssetPreview = (assetId: number) => {
     setPreviewAsset(assetId)
     setIsPreviewOpen(true)
+  }
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value)
   }
 
   // Render grid item
@@ -293,10 +385,61 @@ export function QuickAssetSelector({
     </div>
   )
 
+  // Define grid item skeleton loader
+  const renderGridItemSkeleton = () => (
+    <Card className="overflow-hidden animate-pulse">
+      <div className="aspect-square bg-muted/50"></div>
+      <CardContent className="p-2">
+        <div className="h-3 w-3/4 bg-muted/70 rounded mb-1"></div>
+        <div className="flex items-center justify-between mt-1">
+          <div className="h-3 w-10 bg-muted/50 rounded"></div>
+          <div className="h-3 w-8 bg-muted/50 rounded"></div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  // Define list item skeleton loader
+  const renderListItemSkeleton = () => (
+    <div className="flex items-center p-2 animate-pulse">
+      <div className="h-4 w-4 bg-muted/50 rounded mr-2"></div>
+      <div className="h-8 w-8 mr-2 rounded bg-muted/50"></div>
+      <div className="flex-1 min-w-0">
+        <div className="h-3 w-3/4 bg-muted/70 rounded mb-1"></div>
+        <div className="h-2 w-1/2 bg-muted/50 rounded"></div>
+      </div>
+      <div className="h-4 w-12 bg-muted/50 rounded ml-2"></div>
+    </div>
+  )
+
   return (
     <div className="relative">
       <div className="flex items-center gap-2">
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <Popover 
+          open={isOpen} 
+          onOpenChange={(open) => {
+            setIsOpen(open);
+            if (open) {
+              // On open, reset state and refetch data
+              setPage(1);
+              setSearchQuery("");
+              setAccumulatedAssets([]);
+              
+              // Wait for state updates to apply then refetch
+              setTimeout(() => {
+                refetch({
+                  pagination: {
+                    page: 1,
+                    pageSize: PAGE_SIZE
+                  },
+                  filters: {
+                    search: ""
+                  }
+                });
+              }, 0);
+            }
+          }}
+        >
           <PopoverTrigger asChild>
             <Button variant="outline" className="flex-1 justify-between">
               <div className="flex items-center gap-2">
@@ -309,17 +452,15 @@ export function QuickAssetSelector({
               </div>
               <div className="flex items-center gap-1">
                 {localSelectedAssets.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 rounded-full"
+                  <div
+                    className="h-5 w-5 rounded-full inline-flex items-center justify-center hover:bg-muted/60"
                     onClick={(e) => {
-                      e.stopPropagation()
-                      onSelect([])
+                      e.stopPropagation();
+                      onSelect([]);
                     }}
                   >
                     <X className="h-3 w-3" />
-                  </Button>
+                  </div>
                 )}
               </div>
             </Button>
@@ -333,10 +474,10 @@ export function QuickAssetSelector({
                     placeholder="Search assets..."
                     className="pl-8"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={handleSearchChange}
                   />
                 </div>
-                <Button type="buttton" size="sm" variant="ghost" onClick={onAddNew}>
+                <Button type="button" size="sm" variant="ghost" onClick={onAddNew}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -358,46 +499,118 @@ export function QuickAssetSelector({
             </div>
 
             {viewMode === "grid" ? (
-              <div className="p-2 h-[300px] overflow-auto">
-                {loading && availableAssets.length === 0 ? (
-                  <div className="flex items-center justify-center p-4">
-                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                    <span>Loading assets...</span>
+              <div className="p-2 h-[300px] overflow-auto" 
+                onScroll={(e) => {
+                  const target = e.target as HTMLDivElement;
+                  if (
+                    !loading && 
+                    !isLoadingMore &&
+                    hasMoreAssets && 
+                    target.scrollHeight - target.scrollTop <= target.clientHeight + 100
+                  ) {
+                    loadMoreAssets();
+                  }
+                }}
+              >
+                {loading && accumulatedAssets.length === 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {Array(6).fill(0).map((_, i) => (
+                      <div key={i}>{renderGridItemSkeleton()}</div>
+                    ))}
+                  </div>
+                ) : accumulatedAssets.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-muted-foreground text-sm">No assets found</div>
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-2 gap-2">{availableAssets.map((asset) => renderGridItem(asset))}</div>
-                    {loading && (
-                      <div className="flex items-center justify-center p-2 mt-2">
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        <span className="text-xs">Loading more...</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      {accumulatedAssets.map((asset) => renderGridItem(asset))}
+                    </div>
+                    
+                    {/* Bottom loader */}
+                    {hasMoreAssets && (
+                      <div className="flex items-center justify-center p-2 mt-2 h-10">
+                        {(loading || isLoadingMore) && (
+                          <div className="flex items-center justify-center space-x-1">
+                            <div className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* End of results message */}
+                    {!hasMoreAssets && accumulatedAssets.length > 0 && (
+                      <div className="py-2 text-center text-xs text-muted-foreground">
+                        {totalAssets === accumulatedAssets.length ? (
+                          <span>Showing all {totalAssets} assets</span>
+                        ) : (
+                          <span>End of results</span>
+                        )}
                       </div>
                     )}
                   </>
                 )}
               </div>
             ) : (
-              <VirtualList
-                items={availableAssets}
-                renderItem={renderListItem}
-                itemHeight={48}
-                height={300}
-                hasMore={hasMoreAssets}
-                loadMore={loadMoreAssets}
-                isLoading={loading}
-                emptyMessage={loading ? (
-                  <div className="flex items-center justify-center">
-                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                    <span>Loading assets...</span>
+              <div className="h-[300px]">
+                {loading && accumulatedAssets.length === 0 ? (
+                  <div className="flex flex-col">
+                    {Array(6).fill(0).map((_, i) => (
+                      <div key={i}>{renderListItemSkeleton()}</div>
+                    ))}
                   </div>
-                ) : "No assets found"}
-              />
+                ) : accumulatedAssets.length === 0 ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-muted-foreground text-sm">No assets found</div>
+                  </div>
+                ) : (
+                  <div className="overflow-auto h-full pb-2" 
+                    onScroll={(e) => {
+                      const target = e.target as HTMLDivElement;
+                      if (
+                        !loading && 
+                        !isLoadingMore &&
+                        hasMoreAssets && 
+                        target.scrollHeight - target.scrollTop <= target.clientHeight + 100
+                      ) {
+                        loadMoreAssets();
+                      }
+                    }}
+                  >
+                    {accumulatedAssets.map(asset => renderListItem(asset))}
+                    
+                    {/* Bottom loader */}
+                    {hasMoreAssets && (
+                      <div className="flex items-center justify-center p-2 h-10">
+                        {(loading || isLoadingMore) && (
+                          <div className="flex items-center justify-center space-x-1">
+                            <div className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="h-1.5 w-1.5 bg-muted-foreground/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* End of results message */}
+                    {!hasMoreAssets && accumulatedAssets.length > 0 && (
+                      <div className="py-2 text-center text-xs text-muted-foreground">
+                        {totalAssets === accumulatedAssets.length ? (
+                          <span>Showing all {totalAssets} assets</span>
+                        ) : (
+                          <span>End of results</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </PopoverContent>
         </Popover>
-        {/* <Button size="icon" variant="outline" onClick={onAddNew}>
-          <Upload className="h-4 w-4" />
-        </Button> */}
       </div>
 
       {/* Selected assets preview */}
@@ -429,21 +642,49 @@ export function QuickAssetSelector({
                 <FileIcon className="w-3 h-3 mr-1" />
               )}
               <span className="text-xs max-w-[100px] truncate">{asset.name}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-4 w-4 p-0 ml-1 rounded-full"
+              <div
+                className="h-4 w-4 p-0 ml-1 rounded-full inline-flex items-center justify-center hover:bg-muted/60 cursor-pointer"
                 onClick={() => toggleAssetSelection(asset.id)}
               >
                 <X className="h-3 w-3" />
-              </Button>
+              </div>
             </Badge>
           ))}
         </div>
       )}
 
       {/* Asset preview modal */}
-      <AssetPreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} assetId={previewAsset} />
+      <AssetPreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} 
+      onEdit={(editAsset) => {
+        setSelectedAsset(editAsset)
+        setSelectedAssetId(editAsset.id)
+        setIsCreateModalOpen(true)
+      }} assetId={previewAsset} />
+      <AssetModal
+        isOpen={isCreateModalOpen}
+        onClose={async () => {
+          setIsCreateModalOpen(false)
+          setSelectedAsset(null)
+          setSelectedAssetId(null)
+          await refreshAssets();
+        }}
+        asset={selectedAsset}
+        onSave={async (asset) => {
+          try {
+            setIsCreateModalOpen(false);
+            setSelectedAsset(null)
+            // Refresh assets after saving
+            await refreshAssets();
+          } catch (error) {
+            console.error('Error refreshing assets:', error);
+            toast({
+              title: "Error",
+              description: "Failed to refresh asset list",
+              variant: "destructive",
+            });
+          }
+        }}
+      />
     </div>
   )
 }

@@ -1229,6 +1229,72 @@ export type DeleteMediaMutationResult = {
   readonly deleteMedia?: boolean | null;
 };
 
+export type CreateUserMutationVariables = Exact<{
+  input: UserInput;
+}>;
+
+export type CreateUserMutationResult = {
+  readonly __typename: "Mutation";
+  readonly createUser?: {
+    readonly __typename: "User";
+    readonly id: number;
+    readonly full_name?: string | null;
+    readonly email?: string | null;
+    readonly bio?: string | null;
+    readonly phone_number?: string | null;
+    readonly profile_image?: string | null;
+    readonly created_at: string;
+  } | null;
+};
+
+export type UpdateUserMutationVariables = Exact<{
+  id: Scalars["Int"]["input"];
+  input: UserInput;
+}>;
+
+export type UpdateUserMutationResult = {
+  readonly __typename: "Mutation";
+  readonly updateUser?: {
+    readonly __typename: "User";
+    readonly id: number;
+    readonly full_name?: string | null;
+    readonly email?: string | null;
+    readonly bio?: string | null;
+    readonly phone_number?: string | null;
+    readonly profile_image?: string | null;
+    readonly created_at: string;
+  } | null;
+};
+
+export type DeleteUserMutationVariables = Exact<{
+  id: Scalars["Int"]["input"];
+}>;
+
+export type DeleteUserMutationResult = {
+  readonly __typename: "Mutation";
+  readonly deleteUser?: boolean | null;
+};
+
+export type AddUserToBriefMutationVariables = Exact<{
+  userId: Scalars["Int"]["input"];
+  briefId: Scalars["Int"]["input"];
+}>;
+
+export type AddUserToBriefMutationResult = {
+  readonly __typename: "Mutation";
+  readonly addUserToBrief?: boolean | null;
+};
+
+export type RemoveUserFromBriefMutationVariables = Exact<{
+  userId: Scalars["Int"]["input"];
+  briefId: Scalars["Int"]["input"];
+}>;
+
+export type RemoveUserFromBriefMutationResult = {
+  readonly __typename: "Mutation";
+  readonly removeUserFromBrief?: boolean | null;
+};
+
 export type GetAssetsQueryVariables = Exact<{
   filters?: InputMaybe<AssetFilters>;
   sort?: InputMaybe<ReadonlyArray<AssetSort> | AssetSort>;
@@ -1687,6 +1753,46 @@ export type GetUsersQueryResult = {
       readonly profile_image?: string | null;
     } | null>;
   };
+};
+
+export type GetUserQueryVariables = Exact<{
+  id: Scalars["Int"]["input"];
+}>;
+
+export type GetUserQueryResult = {
+  readonly __typename: "Query";
+  readonly getUser?: {
+    readonly __typename: "User";
+    readonly id: number;
+    readonly full_name?: string | null;
+    readonly email?: string | null;
+    readonly bio?: string | null;
+    readonly phone_number?: string | null;
+    readonly profile_image?: string | null;
+    readonly created_at: string;
+    readonly briefs?: ReadonlyArray<{
+      readonly __typename: "Brief";
+      readonly id: number;
+      readonly title?: string | null;
+      readonly status?: BriefStatus | null;
+    } | null> | null;
+  } | null;
+};
+
+export type GetUserBriefsQueryVariables = Exact<{
+  userId: Scalars["Int"]["input"];
+}>;
+
+export type GetUserBriefsQueryResult = {
+  readonly __typename: "Query";
+  readonly getUserBriefs?: ReadonlyArray<{
+    readonly __typename: "Brief";
+    readonly id: number;
+    readonly title?: string | null;
+    readonly description?: string | null;
+    readonly status?: BriefStatus | null;
+    readonly created_at: string;
+  } | null> | null;
 };
 
 export const CreateAssetDocument = gql`
@@ -2646,6 +2752,265 @@ export type DeleteMediaMutationResult =
 export type DeleteMediaMutationOptions = Apollo.BaseMutationOptions<
   DeleteMediaMutationResult,
   DeleteMediaMutationVariables
+>;
+export const CreateUserDocument = gql`
+  mutation CreateUser($input: UserInput!) {
+    createUser(input: $input) {
+      id
+      full_name
+      email
+      bio
+      phone_number
+      profile_image
+      created_at
+    }
+  }
+`;
+export type CreateUserMutationFn = Apollo.MutationFunction<
+  CreateUserMutationResult,
+  CreateUserMutationVariables
+>;
+
+/**
+ * __useCreateUserMutation__
+ *
+ * To run a mutation, you first call `useCreateUserMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useCreateUserMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [createUserMutation, { data, loading, error }] = useCreateUserMutation({
+ *   variables: {
+ *      input: // value for 'input'
+ *   },
+ * });
+ */
+export function useCreateUserMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    CreateUserMutationResult,
+    CreateUserMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    CreateUserMutationResult,
+    CreateUserMutationVariables
+  >(CreateUserDocument, options);
+}
+export type CreateUserMutationHookResult = ReturnType<
+  typeof useCreateUserMutation
+>;
+export type CreateUserMutationResult =
+  Apollo.MutationResult<CreateUserMutationResult>;
+export type CreateUserMutationOptions = Apollo.BaseMutationOptions<
+  CreateUserMutationResult,
+  CreateUserMutationVariables
+>;
+export const UpdateUserDocument = gql`
+  mutation UpdateUser($id: Int!, $input: UserInput!) {
+    updateUser(id: $id, input: $input) {
+      id
+      full_name
+      email
+      bio
+      phone_number
+      profile_image
+      created_at
+    }
+  }
+`;
+export type UpdateUserMutationFn = Apollo.MutationFunction<
+  UpdateUserMutationResult,
+  UpdateUserMutationVariables
+>;
+
+/**
+ * __useUpdateUserMutation__
+ *
+ * To run a mutation, you first call `useUpdateUserMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useUpdateUserMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [updateUserMutation, { data, loading, error }] = useUpdateUserMutation({
+ *   variables: {
+ *      id: // value for 'id'
+ *      input: // value for 'input'
+ *   },
+ * });
+ */
+export function useUpdateUserMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    UpdateUserMutationResult,
+    UpdateUserMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    UpdateUserMutationResult,
+    UpdateUserMutationVariables
+  >(UpdateUserDocument, options);
+}
+export type UpdateUserMutationHookResult = ReturnType<
+  typeof useUpdateUserMutation
+>;
+export type UpdateUserMutationResult =
+  Apollo.MutationResult<UpdateUserMutationResult>;
+export type UpdateUserMutationOptions = Apollo.BaseMutationOptions<
+  UpdateUserMutationResult,
+  UpdateUserMutationVariables
+>;
+export const DeleteUserDocument = gql`
+  mutation DeleteUser($id: Int!) {
+    deleteUser(id: $id)
+  }
+`;
+export type DeleteUserMutationFn = Apollo.MutationFunction<
+  DeleteUserMutationResult,
+  DeleteUserMutationVariables
+>;
+
+/**
+ * __useDeleteUserMutation__
+ *
+ * To run a mutation, you first call `useDeleteUserMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useDeleteUserMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [deleteUserMutation, { data, loading, error }] = useDeleteUserMutation({
+ *   variables: {
+ *      id: // value for 'id'
+ *   },
+ * });
+ */
+export function useDeleteUserMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    DeleteUserMutationResult,
+    DeleteUserMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    DeleteUserMutationResult,
+    DeleteUserMutationVariables
+  >(DeleteUserDocument, options);
+}
+export type DeleteUserMutationHookResult = ReturnType<
+  typeof useDeleteUserMutation
+>;
+export type DeleteUserMutationResult =
+  Apollo.MutationResult<DeleteUserMutationResult>;
+export type DeleteUserMutationOptions = Apollo.BaseMutationOptions<
+  DeleteUserMutationResult,
+  DeleteUserMutationVariables
+>;
+export const AddUserToBriefDocument = gql`
+  mutation AddUserToBrief($userId: Int!, $briefId: Int!) {
+    addUserToBrief(userId: $userId, briefId: $briefId)
+  }
+`;
+export type AddUserToBriefMutationFn = Apollo.MutationFunction<
+  AddUserToBriefMutationResult,
+  AddUserToBriefMutationVariables
+>;
+
+/**
+ * __useAddUserToBriefMutation__
+ *
+ * To run a mutation, you first call `useAddUserToBriefMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useAddUserToBriefMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [addUserToBriefMutation, { data, loading, error }] = useAddUserToBriefMutation({
+ *   variables: {
+ *      userId: // value for 'userId'
+ *      briefId: // value for 'briefId'
+ *   },
+ * });
+ */
+export function useAddUserToBriefMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    AddUserToBriefMutationResult,
+    AddUserToBriefMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    AddUserToBriefMutationResult,
+    AddUserToBriefMutationVariables
+  >(AddUserToBriefDocument, options);
+}
+export type AddUserToBriefMutationHookResult = ReturnType<
+  typeof useAddUserToBriefMutation
+>;
+export type AddUserToBriefMutationResult =
+  Apollo.MutationResult<AddUserToBriefMutationResult>;
+export type AddUserToBriefMutationOptions = Apollo.BaseMutationOptions<
+  AddUserToBriefMutationResult,
+  AddUserToBriefMutationVariables
+>;
+export const RemoveUserFromBriefDocument = gql`
+  mutation RemoveUserFromBrief($userId: Int!, $briefId: Int!) {
+    removeUserFromBrief(userId: $userId, briefId: $briefId)
+  }
+`;
+export type RemoveUserFromBriefMutationFn = Apollo.MutationFunction<
+  RemoveUserFromBriefMutationResult,
+  RemoveUserFromBriefMutationVariables
+>;
+
+/**
+ * __useRemoveUserFromBriefMutation__
+ *
+ * To run a mutation, you first call `useRemoveUserFromBriefMutation` within a React component and pass it any options that fit your needs.
+ * When your component renders, `useRemoveUserFromBriefMutation` returns a tuple that includes:
+ * - A mutate function that you can call at any time to execute the mutation
+ * - An object with fields that represent the current status of the mutation's execution
+ *
+ * @param baseOptions options that will be passed into the mutation, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options-2;
+ *
+ * @example
+ * const [removeUserFromBriefMutation, { data, loading, error }] = useRemoveUserFromBriefMutation({
+ *   variables: {
+ *      userId: // value for 'userId'
+ *      briefId: // value for 'briefId'
+ *   },
+ * });
+ */
+export function useRemoveUserFromBriefMutation(
+  baseOptions?: Apollo.MutationHookOptions<
+    RemoveUserFromBriefMutationResult,
+    RemoveUserFromBriefMutationVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useMutation<
+    RemoveUserFromBriefMutationResult,
+    RemoveUserFromBriefMutationVariables
+  >(RemoveUserFromBriefDocument, options);
+}
+export type RemoveUserFromBriefMutationHookResult = ReturnType<
+  typeof useRemoveUserFromBriefMutation
+>;
+export type RemoveUserFromBriefMutationResult =
+  Apollo.MutationResult<RemoveUserFromBriefMutationResult>;
+export type RemoveUserFromBriefMutationOptions = Apollo.BaseMutationOptions<
+  RemoveUserFromBriefMutationResult,
+  RemoveUserFromBriefMutationVariables
 >;
 export const GetAssetsDocument = gql`
   query GetAssets(
@@ -3763,4 +4128,184 @@ export type GetUsersQueryResult = Apollo.QueryResult<
 >;
 export function refetchGetUsersQuery(variables?: GetUsersQueryVariables) {
   return { query: GetUsersDocument, variables: variables };
+}
+export const GetUserDocument = gql`
+  query GetUser($id: Int!) {
+    getUser(id: $id) {
+      id
+      full_name
+      email
+      bio
+      phone_number
+      profile_image
+      created_at
+      briefs {
+        id
+        title
+        status
+      }
+    }
+  }
+`;
+
+/**
+ * __useGetUserQuery__
+ *
+ * To run a query within a React component, call `useGetUserQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetUserQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetUserQuery({
+ *   variables: {
+ *      id: // value for 'id'
+ *   },
+ * });
+ */
+export function useGetUserQuery(
+  baseOptions: Apollo.QueryHookOptions<
+    GetUserQueryResult,
+    GetUserQueryVariables
+  > &
+    ({ variables: GetUserQueryVariables; skip?: boolean } | { skip: boolean }),
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useQuery<GetUserQueryResult, GetUserQueryVariables>(
+    GetUserDocument,
+    options,
+  );
+}
+export function useGetUserLazyQuery(
+  baseOptions?: Apollo.LazyQueryHookOptions<
+    GetUserQueryResult,
+    GetUserQueryVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useLazyQuery<GetUserQueryResult, GetUserQueryVariables>(
+    GetUserDocument,
+    options,
+  );
+}
+export function useGetUserSuspenseQuery(
+  baseOptions?:
+    | Apollo.SkipToken
+    | Apollo.SuspenseQueryHookOptions<
+        GetUserQueryResult,
+        GetUserQueryVariables
+      >,
+) {
+  const options =
+    baseOptions === Apollo.skipToken
+      ? baseOptions
+      : { ...defaultOptions, ...baseOptions };
+  return Apollo.useSuspenseQuery<GetUserQueryResult, GetUserQueryVariables>(
+    GetUserDocument,
+    options,
+  );
+}
+export type GetUserQueryHookResult = ReturnType<typeof useGetUserQuery>;
+export type GetUserLazyQueryHookResult = ReturnType<typeof useGetUserLazyQuery>;
+export type GetUserSuspenseQueryHookResult = ReturnType<
+  typeof useGetUserSuspenseQuery
+>;
+export type GetUserQueryResult = Apollo.QueryResult<
+  GetUserQueryResult,
+  GetUserQueryVariables
+>;
+export function refetchGetUserQuery(variables: GetUserQueryVariables) {
+  return { query: GetUserDocument, variables: variables };
+}
+export const GetUserBriefsDocument = gql`
+  query GetUserBriefs($userId: Int!) {
+    getUserBriefs(userId: $userId) {
+      id
+      title
+      description
+      status
+      created_at
+    }
+  }
+`;
+
+/**
+ * __useGetUserBriefsQuery__
+ *
+ * To run a query within a React component, call `useGetUserBriefsQuery` and pass it any options that fit your needs.
+ * When your component renders, `useGetUserBriefsQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useGetUserBriefsQuery({
+ *   variables: {
+ *      userId: // value for 'userId'
+ *   },
+ * });
+ */
+export function useGetUserBriefsQuery(
+  baseOptions: Apollo.QueryHookOptions<
+    GetUserBriefsQueryResult,
+    GetUserBriefsQueryVariables
+  > &
+    (
+      | { variables: GetUserBriefsQueryVariables; skip?: boolean }
+      | { skip: boolean }
+    ),
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useQuery<GetUserBriefsQueryResult, GetUserBriefsQueryVariables>(
+    GetUserBriefsDocument,
+    options,
+  );
+}
+export function useGetUserBriefsLazyQuery(
+  baseOptions?: Apollo.LazyQueryHookOptions<
+    GetUserBriefsQueryResult,
+    GetUserBriefsQueryVariables
+  >,
+) {
+  const options = { ...defaultOptions, ...baseOptions };
+  return Apollo.useLazyQuery<
+    GetUserBriefsQueryResult,
+    GetUserBriefsQueryVariables
+  >(GetUserBriefsDocument, options);
+}
+export function useGetUserBriefsSuspenseQuery(
+  baseOptions?:
+    | Apollo.SkipToken
+    | Apollo.SuspenseQueryHookOptions<
+        GetUserBriefsQueryResult,
+        GetUserBriefsQueryVariables
+      >,
+) {
+  const options =
+    baseOptions === Apollo.skipToken
+      ? baseOptions
+      : { ...defaultOptions, ...baseOptions };
+  return Apollo.useSuspenseQuery<
+    GetUserBriefsQueryResult,
+    GetUserBriefsQueryVariables
+  >(GetUserBriefsDocument, options);
+}
+export type GetUserBriefsQueryHookResult = ReturnType<
+  typeof useGetUserBriefsQuery
+>;
+export type GetUserBriefsLazyQueryHookResult = ReturnType<
+  typeof useGetUserBriefsLazyQuery
+>;
+export type GetUserBriefsSuspenseQueryHookResult = ReturnType<
+  typeof useGetUserBriefsSuspenseQuery
+>;
+export type GetUserBriefsQueryResult = Apollo.QueryResult<
+  GetUserBriefsQueryResult,
+  GetUserBriefsQueryVariables
+>;
+export function refetchGetUserBriefsQuery(
+  variables: GetUserBriefsQueryVariables,
+) {
+  return { query: GetUserBriefsDocument, variables: variables };
 }

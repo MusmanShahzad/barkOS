@@ -16,3 +16,30 @@ query GetUsers($filters: UserFilters, $pagination: PaginationInput, $sort: [User
     }
   }
 }
+
+query GetUser($id: Int!) {
+  getUser(id: $id) {
+    id
+    full_name
+    email
+    bio
+    phone_number
+    profile_image
+    created_at
+    briefs {
+      id
+      title
+      status
+    }
+  }
+}
+
+query GetUserBriefs($userId: Int!) {
+  getUserBriefs(userId: $userId) {
+    id
+    title
+    description
+    status
+    created_at
+  }
+}

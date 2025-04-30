@@ -214,6 +214,7 @@ export default function AssetPreviewModal({ isOpen, onClose, assetId, onEdit }: 
   // Handle edit
   const handleEdit = () => {
     if (onEdit && asset) {
+      console.log("Editing asset:", asset.briefs?.filter(Boolean));
       onEdit({
         id: asset.id,
         name: asset.name || '',

@@ -204,7 +204,12 @@ type BriefFormValues = z.infer<typeof briefFormSchema>;
 // Using IAsset interface from asset-modal.tsx instead of a custom interface
 
 export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }: IBriefModalProps) {
-  const { data: dropDownData, loading: dropDownLoading } = useGetBriefDropDownsQuery();
+  const { data: dropDownData, loading: dropDownLoading } = useGetBriefDropDownsQuery(
+    {
+      // don't cache the data
+      fetchPolicy: 'network-only'
+    }
+  );
   const [createBrief, { loading: creatingBrief }] = useCreateBriefMutation();
   const [updateBrief, { loading: updatingBrief }] = useUpdateBriefMutation();
   // Use the ADD_COMMENT_TO_BRIEF mutation
@@ -219,6 +224,8 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // Track comments in local state
   const [comments, setComments] = useState<Comment[]>([]);
+  // Track brief ID for auto-save functionality for new briefs
+  const [currentBriefId, setCurrentBriefId] = useState<number | null>(brief?.id || null);
   
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -252,35 +259,86 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
   // Auto-save handler (debounced)
   const autoSaveBrief = useCallback(
     debounce(async () => {
-      if (!brief?.id || !isDirty) return;
+      const currentStatus = getValues('status');
+      const currentTitle = getValues('title');
+      
+      // Only auto-save when in Draft status
+      if (currentStatus !== BriefStatus.Draft) return;
+      
+      // Don't auto-save if the form isn't dirty
+      if (!isDirty) return;
+      
+      // Don't auto-save if required title is missing
+      if (!currentTitle.trim()) return;
+      
+      // Log auto-save attempt to help with debugging
+      console.log('Auto-save triggered for brief ID:', currentBriefId);
       
       try {
         setAutoSaveStatus('saving');
-        const data = getValues();
+        
+        const formData = getValues();
+        const validationResult = briefFormSchema.safeParse(formData);
+        
+        // Don't auto-save if form is invalid
+        if (!validationResult.success) {
+          console.log("Form validation failed, skipping auto-save", validationResult.error);
+          return;
+        }
         
         const briefInput = convertFormDataToBriefInput({
-          ...data,
-          id: brief.id.toString(),
-          createdAt: brief.created_at || new Date().toISOString(),
+          ...formData,
+          id: currentBriefId?.toString(),
+          createdAt: brief?.created_at || new Date().toISOString(),
           comments: [] // Don't include comments in the update
         });
 
-        const result = await updateBrief({
-          variables: {
-            id: Number(brief.id),
-            input: briefInput
-          }
-        });
+        if (currentBriefId) {
+          // Update existing brief
+          const result = await updateBrief({
+            variables: {
+              id: currentBriefId,
+              input: briefInput
+            }
+          });
 
-        if (result.data?.updateBrief) {
-          setAutoSaveStatus('saved');
-          
-          // Reset to idle after a delay
-          setTimeout(() => {
-            setAutoSaveStatus('idle');
-          }, 2000);
+          if (result.data?.updateBrief) {
+            setAutoSaveStatus('saved');
+            
+            // Reset to idle after a delay
+            setTimeout(() => {
+              setAutoSaveStatus('idle');
+            }, 2000);
+            
+            console.log('Brief successfully auto-saved (update):', currentBriefId);
+          } else {
+            throw new Error("Failed to update brief");
+          }
         } else {
-          throw new Error("Failed to update brief");
+          // Auto-save for new brief creation
+          const result = await createBrief({
+            variables: {
+              input: briefInput
+            }
+          });
+          
+          if (result.data?.createBrief) {
+            // Store the newly created brief ID for future auto-saves
+            const newBriefId = result.data.createBrief.id;
+            setCurrentBriefId(newBriefId);
+            
+            setAutoSaveStatus('saved');
+            
+            // Reset to idle after a delay
+            setTimeout(() => {
+              setAutoSaveStatus('idle');
+            }, 2000);
+            
+            console.log('Brief successfully auto-saved (create):', newBriefId);
+            toast.success("Draft brief auto-saved");
+          } else {
+            throw new Error("Failed to create brief");
+          }
         }
       } catch (error: any) {
         console.error("Auto-save error:", error);
@@ -292,12 +350,13 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
         }, 3000);
       }
     }, 1500),
-    [brief?.id, isDirty, getValues, brief?.created_at, updateBrief]
+    [currentBriefId, isDirty, getValues, brief?.created_at, updateBrief, createBrief]
   );
 
   // Watch for changes and trigger auto-save
   useEffect(() => {
-    if (brief?.id && isDirty) {
+    // Auto-save can work for both new and existing briefs when in Draft mode
+    if (isDirty && watch('status') === BriefStatus.Draft) {
       autoSaveBrief();
     }
   }, [
@@ -312,7 +371,6 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
     watch('tagIds'),
     watch('assetIds'),
     watch('relatedBriefIds'),
-    brief?.id,
     isDirty,
     autoSaveBrief
   ]);
@@ -660,7 +718,7 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
 
   // Auto-save status indicator
   const AutoSaveIndicator = () => {
-    if (autoSaveStatus === 'idle' || !brief?.id) return null;
+    if (autoSaveStatus === 'idle') return null;
     
     return (
       <div className={cn(
@@ -842,6 +900,12 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
     toast.success("Asset removed from brief");
   };
 
+  // Update useEffect to ensure currentBriefId is always synchronized with brief.id
+  useEffect(() => {
+    // Update currentBriefId whenever brief changes
+    setCurrentBriefId(brief?.id || null);
+  }, [brief]);
+
   return (
     <Dialog 
       open={isOpen} 
@@ -851,7 +915,7 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
         }
       }}
     >
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] flex flex-col">
         <DialogHeader className="space-y-3">
           <div className="flex items-center justify-between">
             <DialogTitle>{brief ? "Edit Brief" : "Create New Brief"}</DialogTitle>
@@ -890,357 +954,365 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
           </div>
         </DialogHeader>
 
-        {isLoading ? (
-          <BriefDetailSkeleton />
-        ) : (
-          <form 
-            ref={formRef}
-            onSubmit={handleSubmit(onSubmitForm)} 
-            className="space-y-6 py-2"
-            id="brief-form"
-          >
-            {/* Title Section */}
-            <div className="space-y-2">
-              <Controller
-                name="title"
-                control={control}
-                render={({ field }) => (
-                  <Input
-                    id="title"
-                    {...field}
-                    placeholder="Brief title"
-                    className={cn(
-                      "text-lg font-medium h-12",
-                      errors.title && "border-destructive"
-                    )}
-                  />
-                )}
-              />
-              <FieldError error={errors.title?.message} />
-            </div>
-
-            {/* Main Details Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="product">Product</Label>
+        <div className="flex-1 overflow-y-auto py-2">
+          {isLoading ? (
+            <BriefDetailSkeleton />
+          ) : (
+            <form 
+              ref={formRef}
+              onSubmit={handleSubmit(onSubmitForm)} 
+              className="space-y-6"
+              id="brief-form"
+            >
+              {/* Title Section */}
+              <div className="space-y-2">
                 <Controller
-                  name="product_id"
+                  name="title"
                   control={control}
                   render={({ field }) => (
-                    <Select 
-                      value={field.value} 
-                      onValueChange={field.onChange}
-                    >
-                      <SelectTrigger className={cn(errors.product_id && "border-destructive")}>
-                        <SelectValue placeholder="Select product..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {productOptions.map((product) => (
-                          <SelectItem key={product?.id} value={String(product?.id)}>
-                            {product?.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                <FieldError error={errors.product_id?.message} />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="objective">Objective</Label>
-                <Controller
-                  name="objective_id"
-                  control={control}
-                  render={({ field }) => (
-                    <Select 
-                      value={field.value} 
-                      onValueChange={field.onChange}
-                    >
-                      <SelectTrigger className={cn(errors.objective_id && "border-destructive")}>
-                        <SelectValue placeholder="Select objective..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {objectiveOptions.map((objective) => (
-                          <SelectItem key={objective.id} value={String(objective.id)}>
-                            {objective.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-                <FieldError error={errors.objective_id?.message} />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="goLive">Go Live Date</Label>
-                <Controller
-                  name="go_live_on"
-                  control={control}
-                  render={({ field }) => (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !field.value && "text-muted-foreground",
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {field.value ? formatDate(field.value) : "Select date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={field.value ? new Date(field.value) : undefined}
-                          onSelect={(date) => field.onChange(date ? date.toISOString() : new Date().toISOString())}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Assigned To</Label>
-                <Controller
-                  name="userIds"
-                  control={control}
-                  render={({ field }) => (
-                    <AssignToTokenizeInput
-                      defaultValues={field.value}
-                      onChange={field.onChange}
+                    <Input
+                      id="title"
+                      {...field}
+                      placeholder="Brief title"
+                      className={cn(
+                        "text-lg font-medium h-12",
+                        errors.title && "border-destructive"
+                      )}
                     />
                   )}
                 />
+                <FieldError error={errors.title?.message} />
               </div>
-            </div>
 
-            {/* Target Audience Section */}
-            <div className="space-y-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="targetAudience">Target Audience</Label>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted-foreground">Tags:</span>
+              {/* Main Details Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="product">Product</Label>
                   <Controller
-                    name="tagIds"
+                    name="product_id"
                     control={control}
                     render={({ field }) => (
-                      <TokenizedSelect
-                        placeholder="Search tags..."
-                        options={tagOptions}
-                        value={field.value}
+                      <Select 
+                        value={field.value} 
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger className={cn(errors.product_id && "border-destructive")}>
+                          <SelectValue placeholder="Select product..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {productOptions.map((product) => (
+                            <SelectItem key={product?.id} value={String(product?.id)}>
+                              {product?.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  <FieldError error={errors.product_id?.message} />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="objective">Objective</Label>
+                  <Controller
+                    name="objective_id"
+                    control={control}
+                    render={({ field }) => (
+                      <Select 
+                        value={field.value} 
+                        onValueChange={field.onChange}
+                      >
+                        <SelectTrigger className={cn(errors.objective_id && "border-destructive")}>
+                          <SelectValue placeholder="Select objective..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {objectiveOptions.map((objective) => (
+                            <SelectItem key={objective.id} value={String(objective.id)}>
+                              {objective.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                  <FieldError error={errors.objective_id?.message} />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="goLive">Go Live Date</Label>
+                  <Controller
+                    name="go_live_on"
+                    control={control}
+                    render={({ field }) => (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !field.value && "text-muted-foreground",
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {field.value ? formatDate(field.value) : "Select date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? date.toISOString() : new Date().toISOString())}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label>Assigned To</Label>
+                  <Controller
+                    name="userIds"
+                    control={control}
+                    render={({ field }) => (
+                      <AssignToTokenizeInput
+                        defaultValues={field.value}
                         onChange={field.onChange}
-                        searchPlaceholder="Search tags..."
-                        multiSelect
                       />
                     )}
                   />
                 </div>
               </div>
-              <Controller
-                name="about_target_audience"
-                control={control}
-                render={({ field }) => (
-                  <Textarea
-                    id="targetAudience"
-                    {...field}
-                    placeholder="Describe your target audience"
-                    className="min-h-[80px]"
-                  />
-                )}
-              />
-            </div>
 
-            {/* Hook/Angle Section */}
-            <div className="space-y-2">
-              <Label htmlFor="hookAngle">Hook/Angle</Label>
-              <Controller
-                name="about_hook"
-                control={control}
-                render={({ field }) => (
-                  <Textarea
-                    id="hookAngle"
-                    {...field}
-                    placeholder="Enter hook or angle for the brief"
-                    className="min-h-[100px]"
-                  />
-                )}
-              />
-            </div>
-
-            {/* Assets Section */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileImage className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="text-sm font-medium">Assets</h3>
+              {/* Target Audience Section */}
+              <div className="space-y-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="targetAudience">Target Audience</Label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">Tags:</span>
+                    <Controller
+                      name="tagIds"
+                      control={control}
+                      render={({ field }) => (
+                        <TokenizedSelect
+                          placeholder="Search tags..."
+                          options={tagOptions}
+                          value={field.value}
+                          onChange={field.onChange}
+                          searchPlaceholder="Search tags..."
+                          multiSelect
+                        />
+                      )}
+                    />
+                  </div>
                 </div>
+                <Controller
+                  name="about_target_audience"
+                  control={control}
+                  render={({ field }) => (
+                    <Textarea
+                      id="targetAudience"
+                      {...field}
+                      placeholder="Describe your target audience"
+                      className="min-h-[80px]"
+                    />
+                  )}
+                />
               </div>
 
-              <QuickAssetSelector
-                selectedAssets={selectedAssets as any}
-                onSelect={(assets: any) => {
-                  setSelectedAssets(assets as IAsset[]);
-                  setValue('assetIds', assets.map((asset: any) => asset.id.toString()), { shouldDirty: true });
-                }}
-                onAddNew={() => {
-                  setSelectedAssetForModal(undefined)
-                  setAssetModalOpen(true)
-                }}
-              />
+              {/* Hook/Angle Section */}
+              <div className="space-y-2">
+                <Label htmlFor="hookAngle">Hook/Angle</Label>
+                <Controller
+                  name="about_hook"
+                  control={control}
+                  render={({ field }) => (
+                    <Textarea
+                      id="hookAngle"
+                      {...field}
+                      placeholder="Enter hook or angle for the brief"
+                      className="min-h-[100px]"
+                    />
+                  )}
+                />
+              </div>
 
-              {/* Selected Assets Preview */}
-              {selectedAssets.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-2">
-                  {selectedAssets.map((asset) => (
-                    <Card key={asset.id} className="overflow-hidden group relative">
-                      <div
-                        className="aspect-square relative bg-muted cursor-pointer"
-                        onClick={() => handlePreviewAsset(asset)}
-                      >
-                        {asset.fileType?.startsWith("image/") ? (
-                          <Image
-                            src={asset.url || "/placeholder.svg"}
-                            alt={asset.name || ""}
-                            fill
-                            className="object-cover"
-                          />
-                        ) : asset.fileType?.startsWith("video/") ? (
-                          <div className="w-full h-full relative">
+              {/* Assets Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileImage className="h-5 w-5 text-muted-foreground" />
+                    <h3 className="text-sm font-medium">Assets</h3>
+                  </div>
+                </div>
+
+                <QuickAssetSelector
+                  selectedAssets={selectedAssets as any}
+                  onSelect={(assets: any) => {
+                    setSelectedAssets(assets as IAsset[]);
+                    setValue('assetIds', assets.map((asset: any) => asset.id.toString()), { shouldDirty: true });
+                  }}
+                  onAddNew={() => {
+                    setSelectedAssetForModal(undefined)
+                    setAssetModalOpen(true)
+                  }}
+                />
+
+                {/* Selected Assets Preview */}
+                {selectedAssets.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mt-2">
+                    {selectedAssets.map((asset) => (
+                      <Card key={asset.id} className="overflow-hidden group relative">
+                        <div
+                          className="aspect-square relative bg-muted cursor-pointer"
+                          onClick={() => handlePreviewAsset(asset)}
+                        >
+                          {asset.fileType?.startsWith("image/") ? (
                             <Image
-                              src={getAssetPreview(asset) || "/placeholder.svg?height=100&width=100&query=video thumbnail"}
+                              src={asset.url || "/placeholder.svg"}
                               alt={asset.name || ""}
                               fill
                               className="object-cover"
                             />
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="h-8 w-8 rounded-full bg-black/60 flex items-center justify-center">
-                                <svg
-                                  xmlns="http://www.w3.org/2000/svg"
-                                  viewBox="0 0 24 24"
-                                  fill="white"
-                                  className="w-4 h-4"
-                                >
-                                  <path
-                                    fillRule="evenodd"
-                                    d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
-                                    clipRule="evenodd"
-                                  />
-                                </svg>
+                          ) : asset.fileType?.startsWith("video/") ? (
+                            <div className="w-full h-full relative">
+                              <Image
+                                src={getAssetPreview(asset) || "/placeholder.svg?height=100&width=100&query=video thumbnail"}
+                                alt={asset.name || ""}
+                                fill
+                                className="object-cover"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="h-8 w-8 rounded-full bg-black/60 flex items-center justify-center">
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    viewBox="0 0 24 24"
+                                    fill="white"
+                                    className="w-4 h-4"
+                                  >
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                </div>
                               </div>
                             </div>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <FileIcon className="h-12 w-12 text-muted-foreground" />
+                            </div>
+                          )}
+                          
+                          {/* Add remove button overlay */}
+                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              className="h-6 w-6 rounded-full"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveAsset(asset.id);
+                              }}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M18 6L6 18" />
+                                <path d="M6 6l12 12" />
+                              </svg>
+                            </Button>
                           </div>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <FileIcon className="h-12 w-12 text-muted-foreground" />
+                        </div>
+                        <CardContent className="p-2">
+                          <div className="truncate text-xs font-medium">{asset.name}</div>
+                          <div className="flex items-center justify-between mt-1">
+                            <Badge variant="outline" className="text-[10px]">
+                              {asset.fileType?.split('/')[0] || 'unknown'}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatFileSize(0)} {/* We don't have size in IAsset */}
+                            </span>
                           </div>
-                        )}
-                        
-                        {/* Add remove button overlay */}
-                        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="destructive"
-                            size="icon"
-                            className="h-6 w-6 rounded-full"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveAsset(asset.id);
-                            }}
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M18 6L6 18" />
-                              <path d="M6 6l12 12" />
-                            </svg>
-                          </Button>
-                        </div>
-                      </div>
-                      <CardContent className="p-2">
-                        <div className="truncate text-xs font-medium">{asset.name}</div>
-                        <div className="flex items-center justify-between mt-1">
-                          <Badge variant="outline" className="text-[10px]">
-                            {asset.fileType?.split('/')[0] || 'unknown'}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground">
-                            {formatFileSize(0)} {/* We don't have size in IAsset */}
-                          </span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Related Briefs Section */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-muted-foreground" />
-                <h3 className="text-sm font-medium">Related Briefs</h3>
-              </div>
-              <Controller
-                name="relatedBriefIds"
-                control={control}
-                render={({ field }) => (
-                  <BriefTokenizeInput
-                    defaultValues={field.value}
-                    onChange={field.onChange}
-                    placeholder="Search briefs to link..."
-                    disabled={isSubmitting}
-                  />
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 )}
-              />
-            </div>
+              </div>
 
-            {/* Comments Section */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              {/* Related Briefs Section */}
+              <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="text-sm font-medium">Comments</h3>
+                  <FileText className="h-5 w-5 text-muted-foreground" />
+                  <h3 className="text-sm font-medium">Related Briefs</h3>
                 </div>
-                {brief && comments.length > 0 && (
-                  <Badge variant="outline">{comments.length}</Badge>
+                <Controller
+                  name="relatedBriefIds"
+                  control={control}
+                  render={({ field }) => (
+                    <BriefTokenizeInput
+                      defaultValues={field.value}
+                      onChange={field.onChange}
+                      placeholder="Search briefs to link..."
+                      disabled={isSubmitting}
+                    />
+                  )}
+                />
+              </div>
+
+              {/* Comments Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5 text-muted-foreground" />
+                    <h3 className="text-sm font-medium">Comments</h3>
+                  </div>
+                  {brief && comments.length > 0 && (
+                    <Badge variant="outline">{comments.length}</Badge>
+                  )}
+                </div>
+                <Separator />
+                {/* Only show comments section when in edit mode (when a brief already exists) */}
+                {brief ? (
+                  <div className="mt-4">
+                    <EnhancedCommentSection 
+                      comments={comments.map(comment => ({
+                        id: comment.id,
+                        text: comment.text,
+                        user: {
+                          id: comment.user.id || '0',
+                          name: comment.user.name || 'Unknown User',
+                          avatar: comment.user.avatar
+                        },
+                        createdAt: comment.createdAt
+                      }))} 
+                      onAddComment={handleAddComment}
+                      isLoading={addingComment}
+                      placeholder="Add a comment to this brief..."
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
+                    <p>Comments will be available after creating the brief</p>
+                  </div>
                 )}
               </div>
-              <Separator />
-              {/* Only show comments section when in edit mode (when a brief already exists) */}
-              {brief ? (
-                <div className="mt-4">
-                  <EnhancedCommentSection 
-                    comments={comments.map(comment => ({
-                      id: comment.id,
-                      text: comment.text,
-                      user: {
-                        id: comment.user.id || '0',
-                        name: comment.user.name || 'Unknown User',
-                        avatar: comment.user.avatar
-                      },
-                      createdAt: comment.createdAt
-                    }))} 
-                    onAddComment={handleAddComment}
-                    isLoading={addingComment}
-                    placeholder="Add a comment to this brief..."
-                  />
-                </div>
-              ) : (
-                <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
-                  <p>Comments will be available after creating the brief</p>
-                </div>
-              )}
-            </div>
-          </form>
-        )}
+            </form>
+          )}
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="pt-4 border-t">
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          {(brief?.id === undefined || autoSaveStatus === 'idle') && (
+          {/* Only show "Create/Update" button when:
+              1. Not in auto-save mode (status is not Draft), OR 
+              2. Auto-save is in 'error' state, OR
+              3. No auto-save has started yet (idle) */}
+          {(watch('status') !== BriefStatus.Draft || 
+            autoSaveStatus === 'error' || 
+            autoSaveStatus === 'idle') && (
             <Button 
               onClick={submitForm}
               disabled={isSubmitting}
@@ -1252,7 +1324,7 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
                   Saving...
                 </>
               ) : (
-                brief ? 'Update' : 'Create'
+                currentBriefId ? 'Update' : 'Create'
               )}
             </Button>
           )}
@@ -1280,13 +1352,7 @@ export default function BriefModal({ isOpen, onClose, onSuccess, brief = null }:
         onClose={() => setIsPreviewOpen(false)} 
         assetId={previewAssetId} 
         onEdit={(previewAsset) => {
-          // Find the corresponding asset in our selectedAssets array
-          const assetToEdit = selectedAssets.find(asset => asset.id === previewAsset.id);
-          if (assetToEdit) {
-            handleAssetEdit(assetToEdit);
-          } else {
-            handleAssetEdit(previewAsset);
-          }
+          handleAssetEdit(previewAsset);
         }}
       />
     </Dialog>

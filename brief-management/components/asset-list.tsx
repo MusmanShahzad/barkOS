@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Dispatch, SetStateAction, useEffect, useRef, useCallback } from 'react'
+import { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input"
 import Image from "next/image"
 import { useToast } from "@/components/ui/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+// @ts-ignore
+import { useInView } from 'react-intersection-observer'
 import { 
   useDeleteAssetMutation,
   useGetAssetsQuery,
@@ -24,6 +26,7 @@ import {
   Asset,
   Media,
 } from "@/src/graphql/generated/graphql"
+import { useApolloClient } from "@apollo/client"
 
 // Simple skeleton components for loading states
 const AssetGridSkeleton = () => (
@@ -151,11 +154,19 @@ export default function AssetList({ className }: AssetListProps) {
   const [search, setSearch] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize] = useState(20)
+  const [pageSize] = useState(10)
   const [sortField, setSortField] = useState<LocalAssetSortField>("CREATED_AT")
   const [sortOrder, setSortOrder] = useState<LocalSortOrder>("DESC")
   const [loadedAssets, setLoadedAssets] = useState<IAsset[]>([])
-  const loadMoreRef = useRef<HTMLDivElement>(null)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [isRefetching, setIsRefetching] = useState(false)
+  
+  // Set up react-intersection-observer with options
+  const { ref: loadMoreRef, inView } = useInView({
+    threshold: 0.1,
+    rootMargin: '0px 0px 400px 0px', // Load more content before user reaches the end
+    triggerOnce: false
+  });
   
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -164,120 +175,258 @@ export default function AssetList({ className }: AssetListProps) {
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<IAsset | null>(null)
 
-  const { data, loading: isLoading, refetch } = useGetAssetsQuery({
+  const client = useApolloClient()
+
+  const { data, loading: isLoading, fetchMore, refetch } = useGetAssetsQuery({
     variables: {
       filters: {
         search: search || undefined,
         mediaId: typeFilter !== "all" ? parseInt(typeFilter) : undefined,
       },
-      sort: {
-        field: sortField,
-        order: sortOrder
-      },
+      sort: [
+        {
+          field: sortField,
+          order: sortOrder
+        }
+      ],
       pagination: {
         page: currentPage,
         pageSize,
       },
     },
-    fetchPolicy: 'network-only',
+    fetchPolicy: 'network-only', // Force network request to avoid cache issues
     notifyOnNetworkStatusChange: true,
-  })
+    onCompleted: (data) => {
+      console.log('Query completed with data:', data);
+    },
+    onError: (error) => {
+      console.error('Query error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load assets",
+        variant: "destructive"
+      });
+    }
+  });
 
   const processAssets = useCallback((assets: Array<any>) => {
+    if (!assets || assets.length === 0) {
+      console.log('No assets to process');
+      return [];
+    }
+    
+    console.log('Processing assets:', assets);
+    
     return assets
-      .filter((asset): asset is NonNullable<typeof asset> => asset !== null)
-      .map(asset => ({
-        id: asset.id,
-        name: asset.name || "",
-        description: asset.description || "",
-        media_id: asset.media?.id || 0,
-        thumbnail_media_id: asset.thumbnail?.id || null,
-        thumbnail: asset.thumbnail ? {
-          id: asset.thumbnail.id,
-          url: asset.thumbnail.url,
-          file_type: asset.thumbnail.file_type
-        } : undefined,
-        url: asset.media?.url || "",
-        fileType: asset.media?.file_type || "",
-        tags: asset.tags?.map((tag: { id: number; name: string | null }) => tag ? {
-          id: tag.id,
-          name: tag.name || ''
-        } : null).filter((tag: any): tag is { id: number; name: string } => tag !== null) || [],
-        briefs: asset.briefs?.map((brief: { id: number; title: string | null }) => brief ? {
-          id: brief.id,
-          title: brief.title || ''
-        } : null).filter((brief: any): brief is { id: number; title: string } => brief !== null) || [],
-        relatedBriefs: asset.briefs?.map((brief: { id: number; title: string | null }) => brief ? {
-          id: brief.id,
-          title: brief.title || ''
-        } : null).filter((brief: any): brief is { id: number; title: string } => brief !== null) || [],
-        created_at: asset.created_at || "",
-        updated_at: asset.updated_at || asset.created_at || ""
-      } as IAsset));
+      .filter((asset): asset is NonNullable<typeof asset> => {
+        // Add extra logging for debugging
+        if (!asset) {
+          console.log('Filtered out null asset');
+          return false;
+        }
+        return true;
+      })
+      .map(asset => {
+        try {
+          return {
+            id: asset.id,
+            name: asset.name || "",
+            description: asset.description || "",
+            media_id: asset.media?.id || 0,
+            thumbnail_media_id: asset.thumbnail?.id || null,
+            thumbnail: asset.thumbnail ? {
+              id: asset.thumbnail.id,
+              url: asset.thumbnail.url,
+              file_type: asset.thumbnail.file_type
+            } : undefined,
+            url: asset.media?.url || "",
+            fileType: asset.media?.file_type || "",
+            tags: asset.tags?.map((tag: { id: number; name: string | null }) => tag ? {
+              id: tag.id,
+              name: tag.name || ''
+            } : null).filter((tag: any): tag is { id: number; name: string } => tag !== null) || [],
+            briefs: asset.briefs?.map((brief: { id: number; title: string | null }) => brief ? {
+              id: brief.id,
+              title: brief.title || ''
+            } : null).filter((brief: any): brief is { id: number; title: string } => brief !== null) || [],
+            relatedBriefs: asset.briefs?.map((brief: { id: number; title: string | null }) => brief ? {
+              id: brief.id,
+              title: brief.title || ''
+            } : null).filter((brief: any): brief is { id: number; title: string } => brief !== null) || [],
+            created_at: asset.created_at || "",
+            updated_at: asset.updated_at || asset.created_at || ""
+          } as IAsset;
+        } catch (error) {
+          console.error('Error processing asset:', error, asset);
+          return null;
+        }
+      })
+      .filter(asset => asset !== null) as IAsset[];
   }, []);
 
   useEffect(() => {
-    if (data?.getAssets?.assets) {
-      console.log('processing assets')
-      const processedAssets = processAssets(Array.from(data.getAssets.assets));
+    console.log('Full data response:', data);
+    
+    if (data?.getAssets) {
+      let assetsToProcess: any[] = [];
       
-      if (currentPage === 1) {
-        console.log('setting loaded assets')
-        setLoadedAssets(processedAssets);
+      // Handle different possible structures of the assets data
+      if (data.getAssets.assets) {
+        if (Array.isArray(data.getAssets.assets)) {
+          assetsToProcess = data.getAssets.assets;
+        } else if (typeof data.getAssets.assets === 'object') {
+          // If it's an object with indices (like a GraphQL connection)
+          assetsToProcess = Object.values(data.getAssets.assets);
+        } else {
+          console.error('Unexpected assets data structure:', data.getAssets.assets);
+        }
+      }
+      
+      console.log('Assets to process:', assetsToProcess);
+      
+      if (assetsToProcess.length > 0) {
+        const processedAssets = processAssets(assetsToProcess);
+        console.log('Processed assets:', processedAssets);
+        
+        if (currentPage === 1) {
+          console.log('Setting assets (page 1):', processedAssets);
+          setLoadedAssets(processedAssets);
+        } else {
+          setLoadedAssets(prev => {
+            // Deduplicate assets when adding new ones
+            const existingIds = new Set(prev.map(asset => asset.id));
+            const uniqueNewAssets = processedAssets.filter(asset => !existingIds.has(asset.id));
+            const newAssets = [...prev, ...uniqueNewAssets];
+            console.log('Setting assets (additional page):', newAssets);
+            return newAssets;
+          });
+        }
       } else {
-        setLoadedAssets(prev => [...prev, ...processedAssets]);
+        console.warn('No assets found in response');
+        if (currentPage === 1) {
+          setLoadedAssets([]);
+        }
       }
     }
-  }, [data?.getAssets?.assets, currentPage, processAssets]);
+  }, [data, currentPage, processAssets]);
 
+  // Reset loaded assets when search/filter/sort changes
   useEffect(() => {
     setLoadedAssets([]);
     setCurrentPage(1);
+    setIsRefetching(true);
   }, [search, typeFilter, sortField, sortOrder]);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        if (first.isIntersecting && data?.getAssets?.hasNextPage && !isLoading) {
-          setCurrentPage((prev) => prev + 1);
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    const currentRef = loadMoreRef.current;
-    if (currentRef) {
-      observer.observe(currentRef);
-    }
-
-    return () => {
-      if (currentRef) {
-        observer.unobserve(currentRef);
-      }
-    };
-  }, [data?.getAssets?.hasNextPage, isLoading]);
-
+  
   const assets = loadedAssets;
   const totalCount = data?.getAssets?.totalCount || 0;
   const hasNextPage = data?.getAssets?.hasNextPage || false;
 
-  const [deleteAsset] = useDeleteAssetMutation({
+  // Debug the state right before rendering
+  useEffect(() => {
+    console.log('Assets state for rendering:', assets);
+    console.log('isLoading:', isLoading);
+    console.log('totalCount:', totalCount);
+    console.log('hasNextPage:', hasNextPage);
+  }, [assets, isLoading, totalCount, hasNextPage]);
+
+  // Load more assets function
+  const loadMoreAssets = useCallback(async () => {
+    if (!hasNextPage || isLoadingMore) return;
+    
+    setIsLoadingMore(true);
+    
+    try {
+      const nextPage = currentPage + 1;
+      const response = await fetchMore({
+        variables: {
+          pagination: { page: nextPage, pageSize },
+          filters: {
+            search: search || undefined,
+            mediaId: typeFilter !== "all" ? parseInt(typeFilter) : undefined,
+          },
+          sort: [{ field: sortField, order: sortOrder }]
+        },
+      });
+      
+      if (response && response.data) {
+        setCurrentPage(nextPage);
+        // Process and deduplicate new assets before adding them
+        const newAssetsArray = Array.isArray(response.data.getAssets.assets) 
+          ? response.data.getAssets.assets 
+          : Array.from(response.data.getAssets.assets || []);
+        
+        const newAssets = processAssets(newAssetsArray);
+        setLoadedAssets(prev => {
+          const existingIds = new Set(prev.map(asset => asset.id));
+          const uniqueNewAssets = newAssets.filter(asset => !existingIds.has(asset.id));
+          return [...prev, ...uniqueNewAssets];
+        });
+        
+        console.log('Loaded more assets:', newAssets);
+      }
+    } catch (error) {
+      console.error("Error loading more assets:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [currentPage, fetchMore, hasNextPage, isLoadingMore, pageSize, search, typeFilter, sortField, sortOrder, processAssets]);
+
+  // Trigger load more when inView changes
+  useEffect(() => {
+    if (inView && !isLoadingMore && hasNextPage) {
+      loadMoreAssets();
+    }
+  }, [inView, isLoadingMore, hasNextPage, loadMoreAssets]);
+
+  // Function to refetch assets with reset page and cache
+  const refetchAssets = useCallback(async () => {
+    try {
+      setCurrentPage(1);
+      setLoadedAssets([]);
+      setIsRefetching(true);
+      
+      // Evict and refetch for fresh data
+      client.cache.evict({ fieldName: 'getAssets' });
+      client.cache.gc();
+      
+      await refetch({
+        pagination: { page: 1, pageSize },
+        filters: {
+          search: search || undefined,
+          mediaId: typeFilter !== "all" ? parseInt(typeFilter) : undefined,
+        },
+        sort: [{ field: sortField, order: sortOrder }]
+      });
+      
+      setIsRefetching(false);
+    } catch (error) {
+      console.error("Error refetching assets:", error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh assets",
+        variant: "destructive"
+      });
+      setIsRefetching(false);
+    }
+  }, [client.cache, refetch, pageSize, search, typeFilter, sortField, sortOrder]);
+
+  // Mutation for deleting assets
+  const [deleteAsset, { loading: deleteLoading }] = useDeleteAssetMutation({
     onCompleted: () => {
       toast({
         title: "Success",
-        description: "Asset deleted successfully",
-      })
-      refetch()
+        description: "Asset deleted successfully"
+      });
+      refetchAssets();
     },
-    onError: (error: Error) => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
-        variant: "destructive",
-      })
-    },
-  })
+        description: `Failed to delete asset: ${error.message}`,
+        variant: "destructive"
+      });
+    }
+  });
 
   const handleSort = (field: LocalAssetSortField) => {
     if (field === sortField) {
@@ -358,11 +507,15 @@ export default function AssetList({ className }: AssetListProps) {
   };
 
   const renderGridView = () => {
-    if (isLoading && currentPage === 1) {
+    // Added console log to debug
+    console.log('Rendering grid view with assets:', assets, 'length:', assets?.length, 'isRefetching:', isRefetching);
+    
+    // Only show full skeleton on initial load or when refetching
+    if ((isLoading && currentPage === 1 && (!assets || assets.length === 0)) || isRefetching) {
       return <AssetGridSkeleton />
     }
 
-    if (assets.length === 0) {
+    if ((!assets || assets.length === 0) && !isLoading && !isRefetching) {
       return (
         <div className="text-center py-12 border rounded-lg">
           <FileIcon className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -475,16 +628,25 @@ export default function AssetList({ className }: AssetListProps) {
         </div>
         {hasNextPage && (
           <div ref={loadMoreRef} className="py-4 text-center">
-            {isLoading ? (
-              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+            {(isLoading && currentPage > 1) || isLoadingMore ? (
+              <div className="flex flex-col items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin mb-2" />
+                <p className="text-sm text-muted-foreground">Loading more assets...</p>
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Loading more assets...</p>
+              <div className="h-8">
+                {/* Invisible spacer for intersection observer */}
+              </div>
             )}
           </div>
         )}
         {!hasNextPage && assets.length > 0 && (
           <p className="text-center text-muted-foreground py-4">
-            No more assets to load
+            {totalCount === assets.length ? (
+              <span>Showing all {assets.length} assets</span>
+            ) : (
+              <span>Showing {assets.length} of {totalCount} assets</span>
+            )}
           </p>
         )}
       </div>
@@ -492,8 +654,26 @@ export default function AssetList({ className }: AssetListProps) {
   }
 
   const renderListView = () => {
-    if (isLoading && currentPage === 1) {
+    // Added console log to debug
+    console.log('Rendering list view with assets:', assets, 'length:', assets?.length, 'isRefetching:', isRefetching);
+    
+    // Only show full skeleton on initial load or when refetching
+    if ((isLoading && currentPage === 1 && (!assets || assets.length === 0)) || isRefetching) {
       return <AssetListSkeleton />
+    }
+    
+    if ((!assets || assets.length === 0) && !isLoading && !isRefetching) {
+      return (
+        <div className="text-center py-12 border rounded-lg">
+          <FileIcon className="mx-auto h-12 w-12 text-muted-foreground" />
+          <h3 className="mt-4 text-lg font-medium">No assets found</h3>
+          <p className="mt-2 text-sm text-muted-foreground">Upload assets or adjust your filters to see results.</p>
+          <Button onClick={handleCreateAsset} className="mt-4">
+            <Upload className="mr-2 h-4 w-4" />
+            Upload Asset
+          </Button>
+        </div>
+      )
     }
 
     return (
@@ -600,16 +780,25 @@ export default function AssetList({ className }: AssetListProps) {
         </div>
         {hasNextPage && (
           <div ref={loadMoreRef} className="py-4 text-center">
-            {isLoading ? (
-              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+            {(isLoading && currentPage > 1) || isLoadingMore ? (
+              <div className="flex flex-col items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin mb-2" />
+                <p className="text-sm text-muted-foreground">Loading more assets...</p>
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Loading more assets...</p>
+              <div className="h-8">
+                {/* Invisible spacer for intersection observer */}
+              </div>
             )}
           </div>
         )}
         {!hasNextPage && assets.length > 0 && (
           <p className="text-center text-muted-foreground py-4">
-            No more assets to load
+            {totalCount === assets.length ? (
+              <span>Showing all {assets.length} assets</span>
+            ) : (
+              <span>Showing {assets.length} of {totalCount} assets</span>
+            )}
           </p>
         )}
       </div>
@@ -629,18 +818,6 @@ export default function AssetList({ className }: AssetListProps) {
               className="pl-10"
             />
           </div>
-          <Select value={typeFilter} onValueChange={handleTypeFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="image">Images</SelectItem>
-              <SelectItem value="document">Documents</SelectItem>
-              <SelectItem value="video">Videos</SelectItem>
-              <SelectItem value="audio">Audio</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
         <Button onClick={() => setIsCreateModalOpen(true)} disabled={isLoading}>
           <Upload className="mr-2 h-4 w-4" />
@@ -697,27 +874,47 @@ export default function AssetList({ className }: AssetListProps) {
 
       <AssetModal
         isOpen={isCreateModalOpen}
-        onClose={() => {
+        onClose={async () => {
           setIsCreateModalOpen(false)
           setSelectedAsset(null)
           setSelectedAssetId(null)
+          
+          // Reset to first page
+          setCurrentPage(1)
+          setLoadedAssets([])
+          
+          // Clear cache to ensure fresh data
+          try {
+            await refetchAssets()
+          } catch (error) {
+            console.error('Error refreshing assets:', error)
+          }
         }}
         asset={selectedAsset}
         onSave={async (asset) => {
           try {
-            setIsCreateModalOpen(false);
-            // First refetch to get new data
-            await refetch();
-            // Then reset the page and clear assets
-            // This will trigger the useEffect that watches data?.getAssets?.assets
-            setCurrentPage(1);
+            setIsCreateModalOpen(false)
+            setSelectedAsset(null)
+            setSelectedAssetId(null)
+            
+            // Reset to first page
+            setCurrentPage(1)
+            setLoadedAssets([])
+            
+            // Refetch fresh data
+            await refetchAssets()
+            
+            toast({
+              title: "Success",
+              description: asset ? `Asset "${asset.name}" updated` : "Asset created"
+            })
           } catch (error) {
-            console.error('Error refetching assets:', error);
+            console.error('Error refreshing assets:', error)
             toast({
               title: "Error",
               description: "Failed to refresh asset list",
               variant: "destructive",
-            });
+            })
           }
         }}
       />
