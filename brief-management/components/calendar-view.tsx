@@ -49,6 +49,8 @@ export default function CalendarView() {
   const calendarRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
   const client = useApolloClient()
+  // Add a state to track if filters have been initialized
+  const [filtersInitialized, setFiltersInitialized] = useState(false)
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState("")
@@ -63,6 +65,49 @@ export default function CalendarView() {
 
   // Mutation to update brief
   const [updateBrief, { loading: updateLoading }] = useUpdateBriefMutation()
+
+  // Fetch dropdown data for filters immediately on component mount
+  const { data: dropdownData, loading: loadingDropdowns } = useGetBriefDropDownsQuery()
+
+  // Initialize all filters when dropdown data is available
+  useEffect(() => {
+    if (dropdownData && !filtersInitialized) {
+      // Initialize product filters
+      if (dropdownData.getProducts && dropdownData.getProducts.length > 0) {
+        const products: Record<number, boolean> = {}
+        dropdownData.getProducts.forEach(product => {
+          if (product) {
+            products[product.id] = true
+          }
+        })
+        setProductFilters(products)
+      }
+
+      // Initialize objective filters
+      if (dropdownData.getObjectives && dropdownData.getObjectives.length > 0) {
+        const objectives: Record<number, boolean> = {}
+        dropdownData.getObjectives.forEach(objective => {
+          if (objective) {
+            objectives[objective.id] = true
+          }
+        })
+        setObjectiveFilters(objectives)
+      }
+
+      // Initialize tag filters
+      if (dropdownData.getTags && dropdownData.getTags.length > 0) {
+        const tags: Record<number, boolean> = {}
+        dropdownData.getTags.forEach(tag => {
+          if (tag) {
+            tags[tag.id] = true
+          }
+        })
+        setTagFilters(tags)
+      }
+
+      setFiltersInitialized(true)
+    }
+  }, [dropdownData, filtersInitialized]);
 
   // Create date range for current calendar view
   const getDateRange = useCallback((): DateRangeInput => {
@@ -138,12 +183,15 @@ export default function CalendarView() {
 
   // Separate effect for filter changes to avoid excessive refetching
   useEffect(() => {
-    const timer = setTimeout(() => {
-      refetch()
-    }, 300) // Debounce filter changes
-    
-    return () => clearTimeout(timer)
-  }, [searchQuery, statusFilters, productFilters, tagFilters, objectiveFilters, refetch])
+    // Only refetch if filters have been initialized
+    if (filtersInitialized) {
+      const timer = setTimeout(() => {
+        refetch()
+      }, 300) // Debounce filter changes
+      
+      return () => clearTimeout(timer)
+    }
+  }, [searchQuery, statusFilters, productFilters, tagFilters, objectiveFilters, refetch, filtersInitialized])
 
   // Navigation functions
   const navigatePreviousWeek = () => {

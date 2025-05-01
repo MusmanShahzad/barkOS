@@ -133,6 +133,18 @@ const BriefFilters: React.FC<BriefFiltersProps> = ({
     return count
   }
 
+  // Skeleton loading component for filter items
+  const FilterSkeleton = ({ count = 3 }: { count?: number }) => (
+    <div className="space-y-2">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="flex items-center space-x-2 animate-pulse">
+          <div className="h-4 w-4 rounded-sm bg-muted" />
+          <div className="h-4 w-24 bg-muted rounded" />
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="mb-4 p-4 border rounded-lg bg-background shadow-sm">
       <div className="flex items-center justify-between mb-3">
@@ -202,20 +214,24 @@ const BriefFilters: React.FC<BriefFiltersProps> = ({
         <div className="space-y-2">
           <Label className="text-xs">Products</Label>
           <div className="flex flex-col space-y-2 max-h-36 overflow-y-auto pr-2">
-            {dropdownData?.getProducts?.map(product => product && (
-              <div key={product.id} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`product-${product.id}`}
-                  checked={productFilters[product.id] || false}
-                  onCheckedChange={(checked) => {
-                    onProductFilterChange(product.id, !!checked)
-                  }}
-                />
-                <Label htmlFor={`product-${product.id}`} className="text-sm cursor-pointer">
-                  {product.name}
-                </Label>
-              </div>
-            ))}
+            {loading ? (
+              <FilterSkeleton count={4} />
+            ) : (
+              dropdownData?.getProducts?.map(product => product && (
+                <div key={product.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`product-${product.id}`}
+                    checked={productFilters[product.id] || false}
+                    onCheckedChange={(checked) => {
+                      onProductFilterChange(product.id, !!checked)
+                    }}
+                  />
+                  <Label htmlFor={`product-${product.id}`} className="text-sm cursor-pointer">
+                    {product.name}
+                  </Label>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -223,20 +239,24 @@ const BriefFilters: React.FC<BriefFiltersProps> = ({
         <div className="space-y-2">
           <Label className="text-xs">Objectives</Label>
           <div className="flex flex-col space-y-2 max-h-36 overflow-y-auto pr-2">
-            {dropdownData?.getObjectives?.map(objective => objective && (
-              <div key={objective.id} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`objective-${objective.id}`}
-                  checked={objectiveFilters[objective.id] || false}
-                  onCheckedChange={(checked) => {
-                    onObjectiveFilterChange(objective.id, !!checked)
-                  }}
-                />
-                <Label htmlFor={`objective-${objective.id}`} className="text-sm cursor-pointer">
-                  {objective.name}
-                </Label>
-              </div>
-            ))}
+            {loading ? (
+              <FilterSkeleton count={4} />
+            ) : (
+              dropdownData?.getObjectives?.map(objective => objective && (
+                <div key={objective.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`objective-${objective.id}`}
+                    checked={objectiveFilters[objective.id] || false}
+                    onCheckedChange={(checked) => {
+                      onObjectiveFilterChange(objective.id, !!checked)
+                    }}
+                  />
+                  <Label htmlFor={`objective-${objective.id}`} className="text-sm cursor-pointer">
+                    {objective.name}
+                  </Label>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -245,21 +265,32 @@ const BriefFilters: React.FC<BriefFiltersProps> = ({
       <div className="mt-4">
         <Label className="text-xs">Tags</Label>
         <div className="mt-2 flex flex-wrap gap-2 max-h-24 overflow-y-auto p-2 border rounded-md">
-          {dropdownData?.getTags?.map(tag => tag && (
-            <div key={tag.id} className="flex items-center">
-              <Checkbox
-                id={`tag-${tag.id}`}
-                className="mr-1.5"
-                checked={tagFilters[tag.id] || false}
-                onCheckedChange={(checked) => {
-                  onTagFilterChange(tag.id, !!checked)
-                }}
-              />
-              <Label htmlFor={`tag-${tag.id}`} className="text-xs cursor-pointer">
-                {tag.name}
-              </Label>
+          {loading ? (
+            <div className="flex flex-wrap gap-2 w-full">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="flex items-center animate-pulse">
+                  <div className="h-4 w-4 rounded-sm bg-muted mr-1.5" />
+                  <div className="h-4 w-16 bg-muted rounded" />
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            dropdownData?.getTags?.map(tag => tag && (
+              <div key={tag.id} className="flex items-center">
+                <Checkbox
+                  id={`tag-${tag.id}`}
+                  className="mr-1.5"
+                  checked={tagFilters[tag.id] || false}
+                  onCheckedChange={(checked) => {
+                    onTagFilterChange(tag.id, !!checked)
+                  }}
+                />
+                <Label htmlFor={`tag-${tag.id}`} className="text-xs cursor-pointer">
+                  {tag.name}
+                </Label>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

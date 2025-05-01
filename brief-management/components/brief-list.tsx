@@ -20,7 +20,8 @@ import {
   BriefSort,
   SortOrder,
   PaginationInput,
-  useDeleteBriefMutation
+  useDeleteBriefMutation,
+  useGetBriefDropDownsQuery
 } from "@/src/graphql/generated/graphql"
 import { useApolloClient } from "@apollo/client"
 import { toast } from "sonner"
@@ -67,12 +68,57 @@ export default function BriefList() {
   const loadMoreRef = useRef<HTMLDivElement>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [briefToDelete, setBriefToDelete] = useState<Brief | null>(null)
+  // Add a state to track if filters have been initialized
+  const [filtersInitialized, setFiltersInitialized] = useState(false)
 
   // Initialize Apollo client for manual refetching
   const client = useApolloClient()
   
   // Initialize delete mutation
   const [deleteBrief] = useDeleteBriefMutation()
+
+  // Fetch dropdown data for filters immediately on component mount
+  const { data: dropdownData, loading: loadingDropdowns } = useGetBriefDropDownsQuery()
+
+  // Initialize all filters when dropdown data is available
+  useEffect(() => {
+    if (dropdownData && !filtersInitialized) {
+      // Initialize product filters
+      if (dropdownData.getProducts && dropdownData.getProducts.length > 0) {
+        const products: Record<number, boolean> = {}
+        dropdownData.getProducts.forEach(product => {
+          if (product) {
+            products[product.id] = true
+          }
+        })
+        setProductFilters(products)
+      }
+
+      // Initialize objective filters
+      if (dropdownData.getObjectives && dropdownData.getObjectives.length > 0) {
+        const objectives: Record<number, boolean> = {}
+        dropdownData.getObjectives.forEach(objective => {
+          if (objective) {
+            objectives[objective.id] = true
+          }
+        })
+        setObjectiveFilters(objectives)
+      }
+
+      // Initialize tag filters
+      if (dropdownData.getTags && dropdownData.getTags.length > 0) {
+        const tags: Record<number, boolean> = {}
+        dropdownData.getTags.forEach(tag => {
+          if (tag) {
+            tags[tag.id] = true
+          }
+        })
+        setTagFilters(tags)
+      }
+
+      setFiltersInitialized(true)
+    }
+  }, [dropdownData, filtersInitialized]);
 
   // Build filters based on user input
   const buildFilters = () => {
@@ -137,9 +183,12 @@ export default function BriefList() {
 
   // Reset state when search, filter, or sort changes
   useEffect(() => {
-    setLoadedBriefs([]);
-    setCurrentPage(1);
-  }, [searchQuery, statusFilters, productFilters, tagFilters, objectiveFilters, sortField, sortOrder]);
+    // Only reset if filters have been initialized
+    if (filtersInitialized) {
+      setLoadedBriefs([]);
+      setCurrentPage(1);
+    }
+  }, [searchQuery, statusFilters, productFilters, tagFilters, objectiveFilters, sortField, sortOrder, filtersInitialized]);
 
   // Process briefs data when it arrives
   useEffect(() => {

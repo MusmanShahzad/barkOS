@@ -15,7 +15,8 @@ import {
   useUpdateBriefMutation, 
   Brief, 
   BriefStatus,
-  DateRangeInput
+  DateRangeInput,
+  useGetBriefDropDownsQuery
 } from "@/src/graphql/generated/graphql"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -52,6 +53,14 @@ export default function BriefBoard() {
   const [objectiveFilters, setObjectiveFilters] = useState<Record<number, boolean>>({})
   // Add a refetching state near the other state variables
   const [isRefetching, setIsRefetching] = useState(false)
+  // Add a state to track if filters have been initialized
+  const [filtersInitialized, setFiltersInitialized] = useState(false)
+
+  // Fetch dropdown data for filters immediately on component mount
+  const { data: dropdownData, loading: loadingDropdowns } = useGetBriefDropDownsQuery();
+  
+  // Mutation to update brief status
+  const [updateBrief] = useUpdateBriefMutation();
 
   // Build filters based on user inputs
   const buildFilters = () => {
@@ -104,20 +113,60 @@ export default function BriefBoard() {
     },
     fetchPolicy: "network-only",
     notifyOnNetworkStatusChange: true
-  })
+  });
 
-  // Mutation to update brief status
-  const [updateBrief] = useUpdateBriefMutation()
+  // Initialize all filters when dropdown data is available
+  useEffect(() => {
+    if (dropdownData && !filtersInitialized) {
+      // Initialize product filters
+      if (dropdownData.getProducts && dropdownData.getProducts.length > 0) {
+        const products: Record<number, boolean> = {}
+        dropdownData.getProducts.forEach(product => {
+          if (product) {
+            products[product.id] = true
+          }
+        })
+        setProductFilters(products)
+      }
+
+      // Initialize objective filters
+      if (dropdownData.getObjectives && dropdownData.getObjectives.length > 0) {
+        const objectives: Record<number, boolean> = {}
+        dropdownData.getObjectives.forEach(objective => {
+          if (objective) {
+            objectives[objective.id] = true
+          }
+        })
+        setObjectiveFilters(objectives)
+      }
+
+      // Initialize tag filters
+      if (dropdownData.getTags && dropdownData.getTags.length > 0) {
+        const tags: Record<number, boolean> = {}
+        dropdownData.getTags.forEach(tag => {
+          if (tag) {
+            tags[tag.id] = true
+          }
+        })
+        setTagFilters(tags)
+      }
+
+      setFiltersInitialized(true)
+    }
+  }, [dropdownData, filtersInitialized]);
 
   // Reset data when filters change
   useEffect(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-      setBriefs([]);
-    } else {
-      refetch();
+    // Only refetch if filters have been initialized
+    if (filtersInitialized) {
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+        setBriefs([]);
+      } else {
+        refetch();
+      }
     }
-  }, [searchQuery, statusFilters, productFilters, tagFilters, objectiveFilters]);
+  }, [searchQuery, statusFilters, productFilters, tagFilters, objectiveFilters, filtersInitialized, currentPage, refetch]);
 
   // Update the useEffect for handling data
   useEffect(() => {
