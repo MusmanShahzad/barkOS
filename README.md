@@ -101,7 +101,7 @@ The frontend application will be available at `http://localhost:3000`.
 ## Demo
 
 Watch our application demonstration:
-[Brief Management System Demo](https://www.loom.com/share/dc6dff7e873f4be3b1db3fcc9222fe1a)
+[Brief Management System Demo](https://www.loom.com/share/dc6dff7e873f4be3b1db3fcc9222fe1a](https://brief-management.vercel.app/briefs)
 
 ## Deployment on Vercel
 
